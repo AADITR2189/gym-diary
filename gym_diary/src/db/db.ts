@@ -14,6 +14,7 @@ import type {
   Session,
   SessionKind,
   Settings,
+  SetEntry,
   StrengthEntry,
   Template,
   WaterLog,
@@ -59,8 +60,9 @@ export interface WorkoutExerciseRow {
   exercise: string;
   muscleGroup: MuscleGroup;
   order: number;
-  sets: { reps: number; weight: number }[];
+  sets: SetEntry[];
   notes?: string;
+  superset?: string;
 }
 export interface CardioRow extends CardioEntry {
   sessionId: string;
@@ -201,6 +203,7 @@ async function writeSessionRows(tx: SessionTx, s: Session) {
       order,
       sets: e.sets,
       notes: e.notes,
+      superset: e.superset,
     });
   for (const [order, c] of cardio.entries())
     await tx.objectStore('cardioSessions').put({ ...c, sessionId: s.id, date: s.date, order, category: c.category ?? cardioCategory(c.activity) });
@@ -218,7 +221,7 @@ function assemble(headers: WorkoutSessionRow[], exRows: WorkoutExerciseRow[], ca
   for (const r of [...exRows].sort((a, b) => a.order - b.order))
     exBy.set(r.sessionId, [
       ...(exBy.get(r.sessionId) ?? []),
-      { id: r.id, exercise: r.exercise, muscleGroup: r.muscleGroup, sets: r.sets, notes: r.notes },
+      { id: r.id, exercise: r.exercise, muscleGroup: r.muscleGroup, sets: r.sets, notes: r.notes, superset: r.superset },
     ]);
   const cBy = new Map<string, CardioEntry[]>();
   for (const r of [...cardioRows].sort((a, b) => a.order - b.order)) {

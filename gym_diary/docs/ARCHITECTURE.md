@@ -294,13 +294,16 @@ its share of the last 7 days' sets, skipping anything trained in the last 48 h.
 
 **Optional sync.** Stand up `schema.sql` on Postgres (for example Supabase). Add `updatedAt`-based last-write-wins sync per store, keeping the device as the source of truth. Ids are already UUIDs, so rows from different devices never collide.
 
+**Done in v4:** rest timer, set types (warm-up / drop / to failure), supersets, progressive-overload
+suggestions, plate calculator, weekly sets per muscle, a yearly activity grid, and a shorter Home with
+the detailed charts moved into Progress tabs (`lib/training.ts`, `components/WorkoutTools.tsx`,
+`components/ProgressViews.tsx`, `components/TrainingCharts.tsx`). Set types and supersets are optional
+fields on the stored rows (`sets[].type`, `superset`), so no database migration was needed; CSV gains
+`set_type` and `superset` columns and still imports older files.
+
 **Feature ideas**
 
-- A rest timer, plus set types (warm-up, drop set, AMRAP) and RPE.
-- Supersets.
-- Progressive-overload suggestions and a plate calculator.
-- Weekly sets per muscle compared against hypertrophy targets.
-- A yearly heatmap.
+- RPE per set.
 - A PR celebration when a record is beaten during logging.
 - Progress photos stored as blobs in IndexedDB.
 - Import from Strong or Hevy exports.

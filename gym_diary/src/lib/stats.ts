@@ -1,7 +1,27 @@
-import type { DateKey, MuscleGroup, PersonalRecord, Session, SetEntry, StrengthEntry } from '../types';
+import type { DateKey, MuscleGroup, PersonalRecord, Session, SetEntry, SetType, StrengthEntry } from '../types';
 import { addDays, monthKey, startOfWeek, todayKey, fromKey } from './date';
 
-export const setVolume = (s: SetEntry) => (s.reps || 0) * (s.weight || 0);
+/** Warm-up sets are logged but left out of volume, records and set counts. */
+export const isWorkSet = (s: SetEntry) => s.type !== 'warmup';
+export const workSets = (sets: SetEntry[]) => sets.filter(isWorkSet);
+export const SET_TYPES: { id: SetType | undefined; short: string; label: string; hint: string }[] = [
+  { id: undefined, short: '1', label: 'Normal set', hint: 'Counts towards volume and records' },
+  { id: 'warmup', short: 'W', label: 'Warm-up', hint: 'Left out of volume, records and weekly sets' },
+  { id: 'drop', short: 'D', label: 'Drop set', hint: 'Lower the weight straight after the previous set' },
+  { id: 'failure', short: 'F', label: 'To failure', hint: 'As many reps as possible' },
+];
+
+/** Label per set: W for warm-ups, D / F for drop and failure sets, else the working-set number. */
+export function setLabels(sets: SetEntry[]): string[] {
+  let n = 0;
+  return sets.map((s) => {
+    if (s.type === 'warmup') return 'W';
+    n++;
+    return s.type === 'drop' ? 'D' : s.type === 'failure' ? 'F' : String(n);
+  });
+}
+
+export const setVolume = (s: SetEntry) => (isWorkSet(s) ? (s.reps || 0) * (s.weight || 0) : 0);
 export const entryVolume = (e: StrengthEntry) => e.sets.reduce((a, s) => a + setVolume(s), 0);
 export const sessionVolume = (s: Session) => s.strength.reduce((a, e) => a + entryVolume(e), 0);
 export const sessionCardioMin = (s: Session) => s.cardio.reduce((a, c) => a + (c.durationMin || 0), 0);
@@ -96,7 +116,7 @@ export function volumeByMuscle(list: Session[]) {
     for (const e of s.strength) {
       const cur = m.get(e.muscleGroup) ?? { volume: 0, sets: 0, sessions: new Set() };
       cur.volume += entryVolume(e);
-      cur.sets += e.sets.length;
+      cur.sets += workSets(e.sets).length;
       cur.sessions.add(s.id);
       m.set(e.muscleGroup, cur);
     }
@@ -156,7 +176,7 @@ export function personalRecords(list: Session[]): PR[] {
           bestSessionVolume: 0,
         } as PR);
       for (const set of e.sets) {
-        if (!set.reps) continue;
+        if (!set.reps || !isWorkSet(set)) continue;
         if (set.weight > pr.maxWeight || (set.weight === pr.maxWeight && set.reps > pr.maxWeightReps)) {
           pr.maxWeight = set.weight;
           pr.maxWeightReps = set.reps;
@@ -181,11 +201,12 @@ export function exerciseProgression(list: Session[], exercise: string) {
   const sorted = [...list].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt - b.createdAt));
   for (const s of sorted)
     for (const e of s.strength) {
-      if (e.exercise !== exercise || !e.sets.length) continue;
+      const sets = workSets(e.sets);
+      if (e.exercise !== exercise || !sets.length) continue;
       rows.push({
         date: s.date,
-        maxWeight: Math.max(...e.sets.map((x) => x.weight || 0)),
-        e1rm: Math.round(Math.max(...e.sets.map(e1rm)) * 10) / 10,
+        maxWeight: Math.max(...sets.map((x) => x.weight || 0)),
+        e1rm: Math.round(Math.max(...sets.map(e1rm)) * 10) / 10,
         volume: Math.round(entryVolume(e)),
       });
     }
@@ -268,7 +289,7 @@ export function lastSetsFor(list: Session[], exercise: string): StrengthEntry['s
         if (!best || s.date > best.date || (s.date === best.date && s.createdAt > best.createdAt))
           best = { date: s.date, createdAt: s.createdAt, sets: e.sets };
       }
-  return best ? best.sets.map((x) => ({ ...x })) : null;
+  return best ? best.sets.map(({ done: _done, ...x }) => ({ ...x })) : null;
 }
 
 /** Volume per calendar day for the last N days, oldest first. */

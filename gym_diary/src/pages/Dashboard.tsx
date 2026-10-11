@@ -1,31 +1,14 @@
 import { useMemo, useState } from 'react';
 import { MuscleHeatCard } from '../components/HeatMapViews';
 import { Link } from 'react-router-dom';
-import { GearSix, UserCircle, CheckCircle, Circle, Barbell, Heartbeat, Plus, Trophy, Target, Drop, CaretRight, Fire } from '@phosphor-icons/react';
+import { GearSix, UserCircle, CheckCircle, Circle, Barbell, Plus, Target, Drop, CaretRight, Fire, ChartLineUp } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
-import { Card, Chip, Empty, IconButton, PageHeader, Progress, SectionTitle, Stat } from '../components/ui';
+import { Card, Empty, IconButton, PageHeader, Progress, SectionTitle, Stat } from '../components/ui';
 import SessionCard from '../components/SessionCard';
-import { ChartCard, RankBars, TrendBars, TrendLine } from '../components/charts';
-import {
-  annualSummary,
-  cardioByCategory,
-  cardioUsage,
-  dailyVolume,
-  exerciseProgression,
-  exerciseUsage,
-  fmtMinutes,
-  fmtNum,
-  inRange,
-  monthlyTrend,
-  streaks,
-  summarize,
-  volumeByMuscle,
-  weeklyTrend,
-} from '../lib/stats';
-import { formatLong, formatShort, startOfMonth, startOfWeek, todayKey } from '../lib/date';
+import { fmtMinutes, fmtNum, inRange, streaks, summarize } from '../lib/stats';
+import { formatLong, startOfMonth, startOfWeek, todayKey } from '../lib/date';
 import { currentWeight, weightChange } from '../lib/body';
 import { goalProgress, overallGoalCompletion } from '../lib/goals';
-import { groupName } from '../data/exercises';
 import WaterRing from '../components/WaterRing';
 import GoalRing from '../components/GoalRing';
 import CountUp from '../components/CountUp';
@@ -41,8 +24,7 @@ function greeting() {
 const signed = (n: number, digits = 1) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmtNum(Math.abs(n), digits)}`;
 
 export default function Dashboard() {
-  const { ready, sessions, settings, profile, measurements, goals, records, categoryOf, water } = useData();
-  const [trend, setTrend] = useState<'week' | 'month'>('week');
+  const { ready, sessions, settings, profile, measurements, goals, water } = useData();
   const today = todayKey();
   const wu = settings.weightUnit;
   const du = settings.distanceUnit;
@@ -52,8 +34,6 @@ export default function Dashboard() {
     const week = summarize(sessions.filter((s) => inRange(s.date, startOfWeek(today, settings.weekStartsOn), today)));
     const month = summarize(sessions.filter((s) => inRange(s.date, startOfMonth(today), today)));
     const all = summarize(sessions);
-    const usage = exerciseUsage(sessions).sort((a, b) => b.count - a.count);
-    const topExercise = usage[0]?.exercise;
     const active = goals.filter((g) => !g.archived);
     return {
       todays,
@@ -61,40 +41,16 @@ export default function Dashboard() {
       month,
       all,
       streak: streaks(sessions),
-      muscles: volumeByMuscle(sessions),
-      topEx: usage.slice(0, 5),
-      topExercise,
-      topProg: topExercise ? exerciseProgression(sessions, topExercise).map((r) => ({ ...r, label: formatShort(r.date) })) : [],
-      prs: [...records].sort((a, b) => (a.maxWeightDate < b.maxWeightDate ? 1 : -1)).slice(0, 4),
-      weekly: weeklyTrend(sessions, 12, settings.weekStartsOn),
-      monthly: monthlyTrend(sessions, 12),
-      daily: dailyVolume(sessions, 30),
-      annual: annualSummary(sessions),
-      cardio: cardioUsage(sessions),
-      cardioTypes: cardioByCategory(sessions, categoryOf),
       goalPct: overallGoalCompletion(active.map((g) => goalProgress(g, sessions, measurements, profile, settings, water))),
       goalCount: active.length,
       weekGoal: [...active].sort((a, b) => b.createdAt - a.createdAt).find((g) => g.type === 'weeklySessions')?.target,
     };
-  }, [sessions, today, settings, records, goals, measurements, profile, categoryOf, water]);
+  }, [sessions, today, settings, goals, measurements, profile, water]);
 
   if (!ready) return <div className="p-8 text-center text-muted">Loading…</div>;
 
-  const trendData = trend === 'week' ? d.weekly : d.monthly;
-  const trendLabel = trend === 'week' ? 'Last 12 weeks' : 'Last 12 months';
   const cw = currentWeight(measurements, profile);
   const wc = weightChange(measurements, profile);
-
-  const TrendToggle = (
-    <div className="flex gap-1">
-      <Chip active={trend === 'week'} onClick={() => setTrend('week')}>
-        Weekly
-      </Chip>
-      <Chip active={trend === 'month'} onClick={() => setTrend('month')}>
-        Monthly
-      </Chip>
-    </div>
-  );
 
   return (
     <div>
@@ -219,151 +175,18 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          {/* Strength */}
-          <SectionTitle action={TrendToggle}>
-            <span className="inline-flex items-center gap-1.5 text-str">
-              <Barbell size={12} weight="bold" /> Strength
-            </span>
-          </SectionTitle>
-          <div className="grid gap-2 md:grid-cols-2">
-            <ChartCard index={0} title={trend === 'week' ? 'Weekly volume' : 'Monthly volume'} sub={`${trendLabel}, ${wu}`}>
-              <TrendBars data={trendData} dataKey="volume" series="strength" unit={wu} />
-            </ChartCard>
-            <ChartCard index={1} title="Volume lifted by day" sub={`Last 30 days, ${wu}`}>
-              <TrendBars data={d.daily} dataKey="volume" series="strength" unit={wu} />
-            </ChartCard>
-            {d.muscles.length > 0 && (
-              <ChartCard index={2} title="Volume by muscle group" sub={`All time, ${wu}`}>
-                <RankBars data={d.muscles.map((m) => ({ name: groupName(m.group), value: m.volume }))} series="strength" unit={wu} />
-              </ChartCard>
-            )}
-            {d.topProg.length > 0 && (
-              <ChartCard
-                index={3}
-                title="Weight progression"
-                sub={`${d.topExercise}, top set per session`}
-                right={
-                  <Link to="/progress" className="text-sm text-muted underline-offset-4 hover:underline">
-                    All exercises
-                  </Link>
-                }
-              >
-                <TrendLine data={d.topProg} dataKey="maxWeight" series="strength" unit={wu} />
-              </ChartCard>
-            )}
-            {d.topEx.length > 0 && (
-              <ChartCard index={4} title="Most performed exercises">
-                <ol className="divide-y divide-line">
-                  {d.topEx.map((e, i) => (
-                    <li key={e.exercise} className="flex items-center gap-3 py-2.5">
-                      <span className="num w-5 text-right font-mono text-xs text-muted">{String(i + 1).padStart(2, '0')}</span>
-                      <span className="flex-1 truncate">{e.exercise}</span>
-                      <span className="num text-sm text-muted">
-                        {e.count}x · {e.sets} sets
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </ChartCard>
-            )}
-            {d.prs.length > 0 && (
-              <ChartCard
-                index={5}
-                title="Personal records"
-                sub="Most recent"
-                right={
-                  <Link to="/progress" className="text-sm text-muted underline-offset-4 hover:underline">
-                    All records
-                  </Link>
-                }
-              >
-                <ul className="divide-y divide-line">
-                  {d.prs.map((p) => (
-                    <li key={p.exercise} className="flex items-center gap-3 py-2.5">
-                      <Trophy size={16} weight="fill" className="text-gold" />
-                      <span className="flex-1 truncate">{p.exercise}</span>
-                      <span className="num font-medium">
-                        {fmtNum(p.maxWeight, 1)} {wu} <span className="text-muted">× {p.maxWeightReps}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </ChartCard>
-            )}
-          </div>
-
-          {d.annual.length > 0 && (
-            <div className="mt-2">
-              <ChartCard title="Annual progress" sub="Totals per calendar year">
-                <div className="-mx-1 overflow-x-auto">
-                  <table className="num w-full text-sm">
-                    <thead>
-                      <tr className="eyebrow text-left">
-                        <th className="px-1 py-2 font-normal">Year</th>
-                        <th className="px-1 py-2 text-right font-normal">Workouts</th>
-                        <th className="px-1 py-2 text-right font-normal">Days</th>
-                        <th className="px-1 py-2 text-right font-normal">Volume</th>
-                        <th className="px-1 py-2 text-right font-normal">Cardio</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {d.annual.map((y) => (
-                        <tr key={y.year} className="border-t border-line">
-                          <td className="px-1 py-2.5 font-medium">{y.year}</td>
-                          <td className="px-1 py-2.5 text-right">{y.sessions}</td>
-                          <td className="px-1 py-2.5 text-right">{y.days}</td>
-                          <td className="px-1 py-2.5 text-right">
-                            {fmtNum(y.volume)}
-                            {y.volumeChange !== null && (
-                              <span className={`ml-1 text-xs ${y.volumeChange >= 0 ? 'text-str' : 'text-danger'}`}>{signed(y.volumeChange, 0)}%</span>
-                            )}
-                          </td>
-                          <td className="px-1 py-2.5 text-right">{fmtMinutes(y.cardioMin)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          <Link to="/progress" className="mt-2 block">
+            <Card className="hover:bg-raised">
+              <div className="flex items-center gap-3">
+                <ChartLineUp size={22} weight="bold" className="text-str" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">All your stats</div>
+                  <div className="text-sm text-muted">Yearly grid, weekly sets per muscle, strength and cardio charts, records</div>
                 </div>
-              </ChartCard>
-            </div>
-          )}
-
-          {/* Cardio */}
-          <SectionTitle action={TrendToggle}>
-            <span className="inline-flex items-center gap-1.5 text-car">
-              <Heartbeat size={12} weight="bold" /> Cardio
-            </span>
-          </SectionTitle>
-          <div className="grid grid-cols-3 gap-2">
-            <Stat index={0} label="Total" tone="car" value={<CountUp value={d.all.cardioMin} format={fmtMinutes} />} sub={`${d.all.cardio} sessions`} />
-            <Stat index={1} label="This week" value={fmtMinutes(d.week.cardioMin)} />
-            <Stat index={2} label="This month" value={fmtMinutes(d.month.cardioMin)} />
-          </div>
-          {d.cardio.length > 0 ? (
-            <div className="mt-2 grid gap-2 md:grid-cols-2">
-              <ChartCard index={0} title={trend === 'week' ? 'Weekly cardio' : 'Monthly cardio'} sub={`${trendLabel}, minutes`}>
-                <TrendBars data={trendData} dataKey="cardioMin" series="cardio" unit="min" />
-              </ChartCard>
-              <ChartCard index={1} title="Cardio by type" sub="All time, minutes">
-                <RankBars data={d.cardioTypes.map((c) => ({ name: c.category, value: c.minutes }))} series="cardio" unit="min" />
-              </ChartCard>
-              <ChartCard index={2} title="Activity breakdown" sub="Top activities, minutes">
-                <RankBars data={d.cardio.slice(0, 8).map((c) => ({ name: c.activity, value: c.minutes }))} series="cardio" unit="min" />
-              </ChartCard>
-              {d.all.distance > 0 && (
-                <ChartCard index={3} title="Distance trend" sub={`${du} per ${trend}`}>
-                  <TrendLine data={trendData} dataKey="distance" series="cardio" unit={du} />
-                </ChartCard>
-              )}
-              {d.all.calories > 0 && (
-                <ChartCard index={4} title="Calories burned" sub={`kcal per ${trend}`}>
-                  <TrendBars data={trendData} dataKey="calories" series="rose" unit="kcal" />
-                </ChartCard>
-              )}
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-muted">No cardio logged yet.</p>
-          )}
+                <CaretRight size={16} weight="bold" className="text-muted" />
+              </div>
+            </Card>
+          </Link>
 
           <SectionTitle
             action={

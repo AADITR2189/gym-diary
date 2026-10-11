@@ -65,7 +65,7 @@ export function goalProgress(
     case 'lift': {
       for (const s of sessions)
         for (const e of s.strength)
-          if (e.exercise === g.exercise) for (const set of e.sets) if (set.reps > 0) current = Math.max(current, set.weight);
+          if (e.exercise === g.exercise) for (const set of e.sets) if (set.reps > 0 && set.type !== 'warmup') current = Math.max(current, set.weight);
       const start = g.start ?? 0;
       pct = g.target > start ? Math.max(0, Math.min(100, ((current - start) / (g.target - start)) * 100)) : ratio(current);
       break;

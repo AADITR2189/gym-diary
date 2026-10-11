@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Barbell, Heartbeat, CaretRight } from '@phosphor-icons/react';
 import type { Session } from '../types';
 import { useData } from '../hooks/useData';
-import { fmtMinutes, fmtNum, sessionCardioMin, sessionDistance, sessionDuration, sessionVolume } from '../lib/stats';
+import { fmtMinutes, fmtNum, sessionCardioMin, sessionDistance, sessionDuration, sessionVolume, workSets } from '../lib/stats';
 import { relativeLabel } from '../lib/date';
 import { groupName } from '../data/exercises';
 import { IconBadge } from './ui';
@@ -17,7 +17,7 @@ export function sessionTitle(s: Session) {
 export default function SessionCard({ s, showDate = true }: { s: Session; showDate?: boolean }) {
   const { settings } = useData();
   const isCardio = s.kind === 'cardio';
-  const sets = s.strength.reduce((a, e) => a + e.sets.length, 0);
+  const sets = s.strength.reduce((a, e) => a + workSets(e.sets).length, 0);
   const dist = sessionDistance(s);
   const dur = sessionDuration(s);
   return (

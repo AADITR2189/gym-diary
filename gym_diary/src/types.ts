@@ -34,9 +34,15 @@ export type SessionKind = 'strength' | 'cardio';
 /** ISO calendar date, e.g. "2026-10-02" (local time, no timezone). */
 export type DateKey = string;
 
+/** Warm-ups don't count towards volume, records or weekly sets. Missing = a normal working set. */
+export type SetType = 'warmup' | 'drop' | 'failure';
+
 export interface SetEntry {
   reps: number;
   weight: number;
+  type?: SetType;
+  /** Ticked off during the workout (starts the rest timer). Editor-only, not saved. */
+  done?: boolean;
 }
 
 export interface StrengthEntry {
@@ -45,6 +51,8 @@ export interface StrengthEntry {
   muscleGroup: MuscleGroup;
   sets: SetEntry[];
   notes?: string;
+  /** Exercises sharing an id are done back to back as a superset. */
+  superset?: string;
 }
 
 export interface CardioEntry {

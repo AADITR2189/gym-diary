@@ -3,7 +3,7 @@ import { baseTargetMl, fmtVolume, targetForDate, totalsByDate } from './water';
 import { ACTIVITY_LEVELS } from '../types';
 import { groupName } from '../data/exercises';
 import { formatLong, todayKey } from './date';
-import { e1rm, fmtMinutes, fmtNum, sessionDuration, sessionVolume, setVolume, streaks, summarize, volumeByMuscle } from './stats';
+import { e1rm, fmtMinutes, fmtNum, sessionDuration, sessionVolume, SET_TYPES, setVolume, streaks, summarize, volumeByMuscle, workSets } from './stats';
 import { goalProgress } from './goals';
 import { currentWeight } from './body';
 
@@ -35,7 +35,7 @@ export async function exportExcel(d: ExportData, from?: string, to?: string) {
       s.kind,
       s.name ?? '',
       s.kind === 'cardio' ? s.cardio.map((c) => c.activity).join(', ') : s.strength.map((e) => e.exercise).join(', '),
-      s.strength.reduce((a, e) => a + e.sets.length, 0),
+      s.strength.reduce((a, e) => a + workSets(e.sets).length, 0),
       Math.round(sessionVolume(s)),
       s.cardio.reduce((a, c) => a + (c.durationMin || 0), 0),
       s.cardio.reduce((a, c) => a + (c.distance || 0), 0) || null,
@@ -46,7 +46,7 @@ export async function exportExcel(d: ExportData, from?: string, to?: string) {
   ];
 
   const setsSheet = [
-    ['Date', 'Session', 'Exercise', 'Muscle group', 'Set', 'Reps', `Weight (${wu})`, `Volume (${wu})`, 'Est. 1RM', 'Notes'].map(H),
+    ['Date', 'Session', 'Exercise', 'Muscle group', 'Set', 'Set type', 'Reps', `Weight (${wu})`, `Volume (${wu})`, 'Est. 1RM', 'Notes'].map(H),
     ...list.flatMap((s) =>
       s.strength.flatMap((e) =>
         e.sets.map((set, i) => [
@@ -55,10 +55,11 @@ export async function exportExcel(d: ExportData, from?: string, to?: string) {
           e.exercise,
           groupName(e.muscleGroup),
           i + 1,
+          SET_TYPES.find((t) => t.id === set.type)?.label ?? 'Normal set',
           set.reps,
           set.weight,
           setVolume(set),
-          Math.round(e1rm(set) * 10) / 10,
+          set.type === 'warmup' ? null : Math.round(e1rm(set) * 10) / 10,
           i === 0 ? e.notes ?? '' : '',
         ]),
       ),
