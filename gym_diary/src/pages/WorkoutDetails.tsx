@@ -9,7 +9,7 @@ import { sessionTitle } from '../components/SessionCard';
 import { groupName } from '../data/exercises';
 import { EQUIPMENT_LABEL, exerciseMeta, regionInfo, type Region } from '../data/muscles';
 import { formatLong } from '../lib/date';
-import { entryVolume, fmtMinutes, fmtNum, personalRecords, sessionCardioMin, sessionDuration, sessionVolume } from '../lib/stats';
+import { entryVolume, fmtMinutes, fmtNum, personalRecords, sessionCardioMin, sessionDuration, sessionVolume, setLabels, workSets } from '../lib/stats';
 import { bodyWeightFor, exerciseIntensity, intensities, regionStats, sessionsLoads, sessionsSetLoads } from '../lib/heatmap';
 import type { StrengthEntry } from '../types';
 
@@ -38,7 +38,7 @@ export default function WorkoutDetails() {
     const best = new Map(personalRecords(before).map((p) => [p.exercise, p]));
     const out = new Set<string>();
     for (const e of s.strength) {
-      const top = e.sets.reduce((m, x) => (x.reps > 0 && x.weight > m ? x.weight : m), 0);
+      const top = e.sets.reduce((m, x) => (x.reps > 0 && x.type !== 'warmup' && x.weight > m ? x.weight : m), 0);
       const prev = best.get(e.exercise);
       if (top > 0 && (!prev || top > prev.maxWeight)) out.add(e.exercise);
     }
@@ -62,7 +62,7 @@ export default function WorkoutDetails() {
 
   const unit = settings.weightUnit;
   const isCardio = s.kind === 'cardio';
-  const sets = s.strength.reduce((a, e) => a + e.sets.length, 0);
+  const sets = s.strength.reduce((a, e) => a + workSets(e.sets).length, 0);
   const dur = sessionDuration(s);
 
   return (
@@ -168,7 +168,8 @@ export default function WorkoutDetails() {
 function ExerciseRow({ e, unit, pr }: { e: StrengthEntry; unit: string; pr: boolean }) {
   const [open, setOpen] = useState(false);
   const meta = exerciseMeta(e.exercise, e.muscleGroup);
-  const top = Math.max(0, ...e.sets.map((x) => x.weight));
+  const top = Math.max(0, ...e.sets.filter((x) => x.type !== 'warmup').map((x) => x.weight));
+  const labels = setLabels(e.sets);
   return (
     <div className="rounded-card border border-line bg-surface">
       <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-3 p-3.5 text-left" aria-expanded={open}>
@@ -194,6 +195,7 @@ function ExerciseRow({ e, unit, pr }: { e: StrengthEntry; unit: string; pr: bool
             <div className="flex flex-wrap gap-1.5">
               <Tag>{groupName(e.muscleGroup)}</Tag>
               {meta.known && <Tag tone="str">{EQUIPMENT_LABEL[meta.equipment]}</Tag>}
+              {e.superset && <Tag tone="car">Superset</Tag>}
             </div>
             <div className="mt-2 text-xs text-muted">
               Main: {meta.primary.map((r) => regionInfo(r).name).join(', ')}
@@ -209,8 +211,8 @@ function ExerciseRow({ e, unit, pr }: { e: StrengthEntry; unit: string; pr: bool
               </thead>
               <tbody>
                 {e.sets.map((x, i) => (
-                  <tr key={i} className="border-t border-line">
-                    <td className="py-1">{i + 1}</td>
+                  <tr key={i} className={`border-t border-line ${x.type === 'warmup' ? 'text-muted' : ''}`}>
+                    <td className="py-1">{labels[i]}</td>
                     <td className="py-1">
                       {x.weight} {unit}
                     </td>

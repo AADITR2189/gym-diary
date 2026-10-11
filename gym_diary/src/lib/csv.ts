@@ -28,6 +28,8 @@ export const CSV_COLUMNS = [
   'avg_heart_rate',
   'cardio_type',
   'entry_notes',
+  'set_type',
+  'superset',
 ] as const;
 
 type Row = Record<(typeof CSV_COLUMNS)[number], string>;
@@ -47,22 +49,22 @@ export function sessionsToCsv(sessions: Session[]): string {
         const sets = e.sets.length ? e.sets : [{ reps: 0, weight: 0 }];
         sets.forEach((set, i) => {
           lines.push(
-            [...base, e.exercise, e.muscleGroup, i + 1, set.reps, set.weight, setVolume(set), '', '', '', '', '', i === 0 ? e.notes ?? '' : '']
+            [...base, e.exercise, e.muscleGroup, i + 1, set.reps, set.weight, setVolume(set), '', '', '', '', '', i === 0 ? e.notes ?? '' : '', set.type ?? '', e.superset ?? '']
               .map(esc)
               .join(','),
           );
         });
       });
-      if (!s.strength.length) lines.push([...base, '', '', '', '', '', '', '', '', '', '', '', ''].map(esc).join(','));
+      if (!s.strength.length) lines.push([...base, '', '', '', '', '', '', '', '', '', '', '', '', '', ''].map(esc).join(','));
     } else {
       s.cardio.forEach((c) => {
         lines.push(
-          [...base, c.activity, '', '', '', '', '', c.durationMin, c.distance ?? '', c.calories ?? '', c.avgHeartRate ?? '', c.category ?? '', c.notes ?? '']
+          [...base, c.activity, '', '', '', '', '', c.durationMin, c.distance ?? '', c.calories ?? '', c.avgHeartRate ?? '', c.category ?? '', c.notes ?? '', '', '']
             .map(esc)
             .join(','),
         );
       });
-      if (!s.cardio.length) lines.push([...base, '', '', '', '', '', '', '', '', '', '', '', ''].map(esc).join(','));
+      if (!s.cardio.length) lines.push([...base, '', '', '', '', '', '', '', '', '', '', '', '', '', ''].map(esc).join(','));
     }
   }
   return lines.join('\r\n');
@@ -170,10 +172,12 @@ export function csvToSessions(text: string): CsvImportResult {
       const setNo = Math.max(1, Math.round(num(r.set_number)) || 1);
       let entry = s.strength[s.strength.length - 1];
       if (!entry || entry.exercise !== r.exercise_or_activity || setNo === 1) {
-        entry = { id: uid(), exercise: r.exercise_or_activity, muscleGroup, sets: [], notes: r.entry_notes || undefined };
+        entry = { id: uid(), exercise: r.exercise_or_activity, muscleGroup, sets: [], notes: r.entry_notes || undefined, superset: r.superset || undefined };
         s.strength.push(entry);
       }
-      if (r.reps !== '' || r.weight !== '') entry.sets.push({ reps: num(r.reps), weight: num(r.weight) });
+      const t = r.set_type.toLowerCase();
+      const type = t === 'warmup' || t === 'drop' || t === 'failure' ? t : undefined;
+      if (r.reps !== '' || r.weight !== '') entry.sets.push(type ? { reps: num(r.reps), weight: num(r.weight), type } : { reps: num(r.reps), weight: num(r.weight) });
     }
   });
   return { sessions: [...byId.values()], errors };

@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy } from '@phosphor-icons/react';
+import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { Button, Card, Field, IconBadge, NumberInput, Tag, inputCls } from '../components/ui';
 import { ExercisePicker, CardioPicker, ExerciseAutocomplete } from '../components/ExercisePicker';
-import type { CardioEntry, Level, MuscleGroup, Session, SessionKind, StrengthEntry, Template } from '../types';
-import { prefsFrom, resolveTemplate } from '../lib/templates';
+import type { CardioEntry, Level, MuscleGroup, Session, SessionKind, SetType, StrengthEntry, Template } from '../types';
+import { LEVEL_RULES, prefsFrom, resolveTemplate } from '../lib/templates';
 import { deleteSession, saveSession, saveTemplate, uid } from '../db/db';
 import { formatLong, isValidKey, todayKey } from '../lib/date';
-import { entryVolume, fmtNum, lastSetsFor, personalRecords, sessionCardioMin, sessionVolume, fmtMinutes } from '../lib/stats';
+import { entryVolume, fmtNum, isWorkSet, lastSetsFor, personalRecords, sessionCardioMin, sessionVolume, fmtMinutes, setLabels } from '../lib/stats';
+import { repRange, suggestNext, usesBarbell, type Suggestion } from '../lib/training';
+import { PlateSheet, RestTimerBar, SetTypeSheet, primeSound, savedRestSec, setTypeTone, type RestRun } from '../components/WorkoutTools';
 import CountUp from '../components/CountUp';
 import { useFlash } from '../lib/anim';
 import type { PersonalRecord } from '../types';
@@ -48,6 +50,8 @@ export default function Editor() {
   const [cardioPicker, setCardioPicker] = useState(false);
   const [error, setError] = useState('');
   const [celebrate, setCelebrate] = useState<Celebration | null>(null);
+  const [rest, setRest] = useState<RestRun | null>(null);
+  const [plates, setPlates] = useState<number | null>(null);
   const initialised = useRef(false);
   /** Ids present when the editor opened; anything else was added now and slides in. */
   const initialIds = useRef<Set<string> | null>(null);
@@ -127,7 +131,7 @@ export default function Editor() {
   }
 
   const stats = useMemo(
-    () => (s ? { volume: sessionVolume(s), minutes: sessionCardioMin(s), sets: s.strength.reduce((a, e) => a + e.sets.length, 0) } : null),
+    () => (s ? { volume: sessionVolume(s), minutes: sessionCardioMin(s), sets: s.strength.reduce((a, e) => a + e.sets.filter(isWorkSet).length, 0) } : null),
     [s],
   );
 
@@ -152,6 +156,52 @@ export default function Editor() {
   };
 
   const isCardio = s.kind === 'cardio';
+  const prefs = prefsFrom(profile);
+  const groups = supersetLetters(s.strength);
+
+  /** Tick a set off. Finishing a set starts the rest timer, except mid-superset where you go straight on. */
+  function toggleDone(entryId: string, i: number) {
+    if (!s) return;
+    const idx = s.strength.findIndex((e) => e.id === entryId);
+    const e = s.strength[idx];
+    const done = !e.sets[i]?.done;
+    updEntry(entryId, (x) => ({ ...x, sets: x.sets.map((st, j) => (j === i ? { ...st, done } : st)) }));
+    if (!done) return;
+    primeSound();
+    const nextInGroup = e.superset && s.strength[idx + 1]?.superset === e.superset ? s.strength[idx + 1] : null;
+    if (nextInGroup) {
+      setRest(null);
+      return;
+    }
+    const first = e.superset ? s.strength.find((x) => x.superset === e.superset)! : e;
+    const pending = (x: StrengthEntry, skip?: number) => x.sets.findIndex((st, j) => j !== skip && !st.done);
+    let next: string | undefined;
+    if (e.superset && first.id !== e.id && pending(first) >= 0) next = `Next: round ${pending(first) + 1} of the superset, ${first.exercise}`;
+    else if (pending(e, i) >= 0) next = `Next: set ${pending(e, i) + 1} of ${e.exercise}`;
+    else if (s.strength[idx + 1]) next = `Next: ${s.strength[idx + 1].exercise}`;
+    else next = 'Last set done. Save your workout when you are ready.';
+    const total = savedRestSec() ?? LEVEL_RULES[prefs.level].restSec;
+    setRest({ total, endAt: Date.now() + total * 1000, next });
+  }
+
+  /** Link an exercise with the next one into a superset, or split them apart. */
+  function toggleLink(idx: number) {
+    if (!s) return;
+    const list = s.strength.map((e) => ({ ...e }));
+    const a = list[idx];
+    const b = list[idx + 1];
+    if (!b) return;
+    if (a.superset && a.superset === b.superset) {
+      const fresh = uid();
+      for (let j = idx + 1; j < list.length && list[j].superset === a.superset; j++) list[j].superset = fresh;
+    } else {
+      const id = a.superset ?? uid();
+      a.superset = id;
+      const old = b.superset;
+      for (let j = idx + 1; j < list.length && (j === idx + 1 || (old && list[j].superset === old)); j++) list[j].superset = id;
+    }
+    update({ strength: normaliseSupersets(list) });
+  }
 
   async function onSave() {
     if (!s) return;
@@ -166,10 +216,16 @@ export default function Editor() {
       name: s.name?.trim() || undefined,
       notes: s.notes?.trim() || undefined,
       durationMin: s.durationMin && s.durationMin > 0 ? s.durationMin : undefined,
-      strength: isCardio ? [] : s.strength.map((e) => ({ ...e, sets: e.sets.map((x) => ({ reps: x.reps || 0, weight: x.weight || 0 })) })),
+      strength: isCardio
+        ? []
+        : normaliseSupersets(s.strength).map((e) => ({
+            ...e,
+            sets: e.sets.map((x) => (x.type ? { reps: x.reps || 0, weight: x.weight || 0, type: x.type } : { reps: x.reps || 0, weight: x.weight || 0 })),
+          })),
       cardio: isCardio ? s.cardio.map((c) => ({ ...c, category: c.category ?? categoryOf(c.activity) })) : [],
     };
     await saveSession(clean);
+    setRest(null);
     if (isNew) clearDraft();
     const prs = clean.strength
       .map((e) => ({ e, best: newPrSet(e, prevBest.get(e.exercise)) }))
@@ -177,7 +233,7 @@ export default function Editor() {
       .map((x) => `${x.e.exercise}: ${x.best!.weight} ${settings.weightUnit} × ${x.best!.reps}`);
     setCelebrate({
       kind: clean.kind,
-      sets: clean.strength.reduce((a, e) => a + e.sets.length, 0),
+      sets: clean.strength.reduce((a, e) => a + e.sets.filter(isWorkSet).length, 0),
       volume: sessionVolume(clean),
       minutes: clean.kind === 'cardio' ? sessionCardioMin(clean) : clean.durationMin ?? 0,
       prs,
@@ -212,7 +268,7 @@ export default function Editor() {
   }
 
   return (
-    <div className="pb-44">
+    <div className={rest ? 'pb-64' : 'pb-44'}>
       <div className="sticky top-0 z-30 -mx-4 flex items-center gap-1 border-b border-line bg-bg/85 px-2 pt-safe backdrop-blur-md">
         <button onClick={isNew ? onDiscard : goBack} className="grid h-12 w-12 place-items-center" aria-label="Back">
           <ArrowLeft size={20} weight="bold" />
@@ -273,19 +329,43 @@ export default function Editor() {
       {/* Strength */}
       {!isCardio && (
         <div className="mt-6 space-y-3">
-          {s.strength.map((e, idx) => (
-            <StrengthCard
-              key={e.id}
-              added={isAdded(e.id)}
-              prev={prevBest.get(e.exercise)}
-              e={e}
-              idx={idx}
-              unit={settings.weightUnit}
-              lastSets={lastSetsFor(sessions.filter((x) => x.id !== s.id), e.exercise)}
-              onChange={(fn) => updEntry(e.id, fn)}
-              onRemove={() => update({ strength: s.strength.filter((x) => x.id !== e.id) })}
-            />
-          ))}
+          {s.strength.map((e, idx) => {
+            const lastSets = lastSetsFor(sessions.filter((x) => x.id !== s.id), e.exercise);
+            const next = s.strength[idx + 1];
+            const linked = !!e.superset && next?.superset === e.superset;
+            return (
+              <div key={e.id}>
+                <StrengthCard
+                  added={isAdded(e.id)}
+                  prev={prevBest.get(e.exercise)}
+                  e={e}
+                  idx={idx}
+                  unit={settings.weightUnit}
+                  lastSets={lastSets}
+                  group={e.superset ? groups.get(e.superset) : undefined}
+                  suggestion={suggestNext(lastSets, repRange(prefs.goal, e.exercise), settings.weightUnit)}
+                  onPlates={usesBarbell(e.exercise) ? (w) => setPlates(w) : undefined}
+                  onDone={(i) => toggleDone(e.id, i)}
+                  onChange={(fn) => updEntry(e.id, fn)}
+                  onRemove={() => update({ strength: normaliseSupersets(s.strength.filter((x) => x.id !== e.id)) })}
+                />
+                {next && (
+                  <div className={`flex justify-center ${linked ? '-my-1' : 'mt-1'}`}>
+                    <button
+                      onClick={() => toggleLink(idx)}
+                      className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ${
+                        linked ? 'border border-car/30 bg-car-soft text-car' : 'text-muted hover:bg-raised'
+                      }`}
+                      aria-label={linked ? `Split ${e.exercise} and ${next.exercise}` : `Superset ${e.exercise} with ${next.exercise}`}
+                    >
+                      {linked ? <LinkBreak size={14} weight="bold" /> : <LinkSimple size={14} weight="bold" />}
+                      {linked ? 'Superset · tap to split' : 'Superset with next'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           <ExerciseAutocomplete onPick={addExercise} />
           <Button variant="secondary" size="lg" className="w-full border-dashed" onClick={() => setPicker(true)}>
             <Plus size={18} weight="bold" /> Browse exercises
@@ -357,6 +437,7 @@ export default function Editor() {
       {/* Sticky save bar */}
       <div className="fixed inset-x-0 bottom-16 z-30 border-t border-line bg-bg/90 px-4 py-3 backdrop-blur-md">
         <div className="mx-auto max-w-lg">
+          {rest && !isCardio && <RestTimerBar run={rest} onChange={setRest} onStop={() => setRest(null)} />}
           {error && <div className="mb-2 text-sm text-danger">{error}</div>}
           <div className="flex items-center gap-3">
             <div className="num min-w-0 flex-1 text-sm text-muted">
@@ -414,6 +495,7 @@ export default function Editor() {
           setPicker(false);
         }}
       />
+      <PlateSheet open={plates !== null} initial={plates ?? 0} unit={settings.weightUnit} onClose={() => setPlates(null)} />
       <CardioPicker
         open={cardioPicker}
         onClose={() => setCardioPicker(false)}
@@ -434,6 +516,10 @@ function StrengthCard({
   lastSets,
   onChange,
   onRemove,
+  onDone,
+  onPlates,
+  suggestion,
+  group,
   added,
   prev,
 }: {
@@ -443,27 +529,49 @@ function StrengthCard({
   added?: boolean;
   prev?: PersonalRecord;
   lastSets: StrengthEntry['sets'] | null;
+  suggestion: Suggestion | null;
+  /** Superset letter (A, B, …) when this exercise is part of one. */
+  group?: string;
   onChange: (fn: (e: StrengthEntry) => StrengthEntry) => void;
   onRemove: () => void;
+  onDone: (i: number) => void;
+  onPlates?: (weight: number) => void;
 }) {
   const [showNotes, setShowNotes] = useState(!!e.notes);
-  const setSet = (i: number, patch: Partial<{ reps: number; weight: number }>) =>
+  const [typeFor, setTypeFor] = useState<number | null>(null);
+  const setSet = (i: number, patch: Partial<StrengthEntry['sets'][number]>) =>
     onChange((x) => ({ ...x, sets: x.sets.map((st, j) => (j === i ? { ...st, ...patch } : st)) }));
   const last = e.sets[e.sets.length - 1];
   const initialSets = useRef(e.sets.length);
   const pr = newPrSet(e, prev);
+  const labels = setLabels(e.sets);
+  const working = e.sets.filter(isWorkSet);
+  const topWeight = Math.max(0, ...working.map((x) => x.weight || 0));
+  // Only the top sets change, so pyramids and back-off sets keep their own weights.
+  const applySuggestion = (sg: Suggestion) =>
+    onChange((x) => ({
+      ...x,
+      sets: x.sets.map((st) => (isWorkSet(st) && st.type !== 'drop' && (st.weight || 0) === topWeight ? { ...st, weight: sg.weight, reps: sg.reps } : st)),
+    }));
+  const alreadyApplied = !!suggestion && working.some((st) => st.weight === suggestion.weight && st.reps === suggestion.reps);
   return (
-    <Card className={`p-4 ${added ? 'anim-slide-in' : ''}`}>
+    <Card className={`p-4 ${added ? 'anim-slide-in' : ''} ${group ? 'border-l-4 border-l-car' : ''}`}>
       <div className="flex items-start gap-3">
-        <IconBadge tone="str" size="sm">
-          <span className="num text-sm font-semibold">{idx + 1}</span>
+        <IconBadge tone={group ? 'car' : 'str'} size="sm">
+          <span className="num text-sm font-semibold">{group ?? idx + 1}</span>
         </IconBadge>
         <div className="min-w-0 flex-1">
           <div className="font-medium leading-tight">{e.exercise}</div>
           <div className="num text-xs text-muted">
+            {group ? `Superset ${group} · ` : ''}
             {groupName(e.muscleGroup)} · volume {fmtNum(entryVolume(e))} {unit}
           </div>
         </div>
+        {onPlates && (
+          <button onClick={() => onPlates(topWeight)} className="grid h-9 w-9 place-items-center text-muted" aria-label="Plate calculator" title="Plate calculator">
+            <Calculator size={18} weight="bold" />
+          </button>
+        )}
         <button onClick={() => setShowNotes(!showNotes)} className="grid h-9 w-9 place-items-center text-muted" aria-label="Exercise notes">
           <NotePencil size={18} weight="bold" />
         </button>
@@ -481,33 +589,53 @@ function StrengthCard({
       )}
       {lastSets && (
         <div className="mt-2 flex items-center gap-1.5 font-mono text-[11px] text-muted">
-          <ClockCounterClockwise size={12} weight="bold" /> Last time: {lastSets.map((x) => `${x.weight}×${x.reps}`).join(', ')}
+          <ClockCounterClockwise size={12} weight="bold" /> Last time:{' '}
+          {lastSets.map((x) => `${x.type === 'warmup' ? 'W ' : ''}${x.weight}×${x.reps}`).join(', ')}
         </div>
       )}
-      <div className="eyebrow mt-4 grid grid-cols-[2rem_1fr_1fr_2.5rem] items-center gap-2 text-center">
+      {suggestion && (
+        <div className="mt-2 flex items-center gap-2 rounded-btn border border-str/25 bg-str-soft px-3 py-2">
+          <TrendUp size={18} weight="bold" className="shrink-0 text-str" />
+          <div className="min-w-0 flex-1">
+            <div className="num text-sm font-medium text-str">
+              Try today: {suggestion.weight > 0 ? `${suggestion.weight} ${unit} × ${suggestion.reps}` : `${suggestion.reps} reps`}
+            </div>
+            <div className="text-xs text-muted">{suggestion.reason}</div>
+          </div>
+          {!alreadyApplied && (
+            <Button size="sm" className="shrink-0" onClick={() => applySuggestion(suggestion)}>
+              Use
+            </Button>
+          )}
+        </div>
+      )}
+      <div className="eyebrow mt-4 grid grid-cols-[2.5rem_1fr_1fr_2.75rem] items-center gap-2 text-center">
         <span>Set</span>
         <span>Weight {unit}</span>
         <span>Reps</span>
-        <span />
+        <span>Done</span>
       </div>
       <div className="mt-1.5 space-y-2">
         {e.sets.map((st, i) => (
           <SetRow
             key={i}
-            i={i}
+            label={labels[i]}
+            type={st.type}
+            done={!!st.done}
             weight={st.weight}
             reps={st.reps}
             added={i >= initialSets.current}
+            onType={() => setTypeFor(i)}
             onWeight={(v) => setSet(i, { weight: v ?? 0 })}
             onReps={(v) => setSet(i, { reps: v ?? 0 })}
-            onRemove={() => onChange((x) => ({ ...x, sets: x.sets.filter((_, j) => j !== i) }))}
+            onDone={() => onDone(i)}
           />
         ))}
       </div>
       <Button
         size="sm"
         className="mt-3 w-full"
-        onClick={() => onChange((x) => ({ ...x, sets: [...x.sets, last ? { ...last } : { reps: 10, weight: 0 }] }))}
+        onClick={() => onChange((x) => ({ ...x, sets: [...x.sets, last ? { reps: last.reps, weight: last.weight, type: last.type === 'warmup' ? undefined : last.type } : { reps: 10, weight: 0 }] }))}
       >
         {last ? <CopySimple size={16} weight="bold" /> : <Plus size={16} weight="bold" />} Add set{' '}
         {last && (
@@ -516,6 +644,7 @@ function StrengthCard({
           </span>
         )}
       </Button>
+      <p className="mt-2 text-center text-[11px] text-muted">Tap a set number to make it a warm-up, drop set or set to failure.</p>
       {showNotes && (
         <textarea
           value={e.notes ?? ''}
@@ -525,6 +654,20 @@ function StrengthCard({
           className={`${inputCls} mt-2 h-auto py-2`}
         />
       )}
+      <SetTypeSheet
+        open={typeFor !== null}
+        label={typeFor !== null ? `Set ${typeFor + 1}` : ''}
+        current={typeFor !== null ? e.sets[typeFor]?.type : undefined}
+        onClose={() => setTypeFor(null)}
+        onPick={(t) => {
+          if (typeFor !== null) setSet(typeFor, { type: t });
+          setTypeFor(null);
+        }}
+        onDelete={() => {
+          if (typeFor !== null) onChange((x) => ({ ...x, sets: x.sets.filter((_, j) => j !== typeFor) }));
+          setTypeFor(null);
+        }}
+      />
     </Card>
   );
 }
@@ -534,48 +677,72 @@ function newPrSet(e: StrengthEntry, prev?: PersonalRecord) {
   if (!prev) return null; // first time doing an exercise isn't treated as a PR
   let best: { weight: number; reps: number } | null = null;
   for (const st of e.sets) {
-    if (!st.reps || !st.weight) continue;
+    if (!st.reps || !st.weight || !isWorkSet(st)) continue;
     const beats = st.weight > prev.maxWeight || (st.weight === prev.maxWeight && st.reps > prev.maxWeightReps);
     if (beats && (!best || st.weight > best.weight || (st.weight === best.weight && st.reps > best.reps))) best = { weight: st.weight, reps: st.reps };
   }
   return best;
 }
 
-/** One set row. Flashes green and shows a tick the moment both weight and reps are filled. */
+/** Drop superset ids that only one exercise (or non-adjacent exercises) still carries. */
+function normaliseSupersets(list: StrengthEntry[]): StrengthEntry[] {
+  return list.map((e, i) => {
+    if (!e.superset) return e;
+    const linked = list[i - 1]?.superset === e.superset || list[i + 1]?.superset === e.superset;
+    return linked ? e : { ...e, superset: undefined };
+  });
+}
+
+/** A, B, C… for each superset, in the order they appear. */
+function supersetLetters(list: StrengthEntry[]) {
+  const m = new Map<string, string>();
+  for (const e of list) if (e.superset && !m.has(e.superset)) m.set(e.superset, String.fromCharCode(65 + m.size));
+  return m;
+}
+
+/** One set row. The label opens the set-type menu; the tick marks it done and starts the rest timer. */
 function SetRow({
-  i,
+  label,
+  type,
+  done,
   weight,
   reps,
   added,
+  onType,
   onWeight,
   onReps,
-  onRemove,
+  onDone,
 }: {
-  i: number;
+  label: string;
+  type?: SetType;
+  done: boolean;
   weight: number;
   reps: number;
   added: boolean;
+  onType: () => void;
   onWeight: (v: number | undefined) => void;
   onReps: (v: number | undefined) => void;
-  onRemove: () => void;
+  onDone: () => void;
 }) {
-  const done = weight > 0 && reps > 0;
   const flash = useFlash(done);
   return (
-    <div className={`grid grid-cols-[2rem_1fr_1fr_2.5rem] items-center gap-2 rounded-btn ${added ? 'anim-slide-in' : ''} ${flash ? 'anim-set-done' : ''}`}>
-      <span className="grid place-items-center">
-        {done ? (
-          <span key="tick" className={`grid h-6 w-6 place-items-center rounded-full bg-str-soft text-str ${flash ? 'anim-pop' : ''}`} aria-label={`Set ${i + 1} complete`}>
-            <Check size={14} weight="bold" />
-          </span>
-        ) : (
-          <span className="num text-center font-medium text-muted">{i + 1}</span>
-        )}
-      </span>
-      <NumberInput value={weight} step={0.5} onChange={onWeight} label={`Set ${i + 1} weight`} />
-      <NumberInput value={reps} onChange={onReps} label={`Set ${i + 1} reps`} />
-      <button onClick={onRemove} className="grid h-10 w-10 place-items-center text-muted" aria-label={`Remove set ${i + 1}`}>
-        <Trash size={16} weight="bold" />
+    <div className={`grid grid-cols-[2.5rem_1fr_1fr_2.75rem] items-center gap-2 rounded-btn ${added ? 'anim-slide-in' : ''} ${flash ? 'anim-set-done' : ''}`}>
+      <button
+        onClick={onType}
+        className={`num mx-auto grid h-9 w-9 place-items-center rounded-full font-semibold ${setTypeTone(type)}`}
+        aria-label={`Set ${label}: change set type or delete`}
+      >
+        {label}
+      </button>
+      <NumberInput value={weight} step={0.5} onChange={onWeight} label={`Set ${label} weight`} className={done ? 'border-str/40' : ''} />
+      <NumberInput value={reps} onChange={onReps} label={`Set ${label} reps`} className={done ? 'border-str/40' : ''} />
+      <button
+        onClick={onDone}
+        aria-pressed={done}
+        aria-label={done ? `Set ${label} done. Tap to undo` : `Mark set ${label} done and start rest timer`}
+        className={`grid h-11 w-11 place-items-center rounded-btn border transition-colors ${done ? 'border-str bg-str text-bg' : 'border-line bg-bg text-muted'}`}
+      >
+        <Check size={18} weight="bold" className={done && flash ? 'anim-pop' : ''} />
       </button>
     </div>
   );

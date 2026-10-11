@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Drop, Fire, Trophy, CalendarCheck, ChartLineUp, Medal, Target, Scales, ArrowUpRight, ArrowDownRight } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { Card, Chip, Empty, PageHeader, Progress as Bar, SectionTitle, Stat, inputCls } from '../components/ui';
@@ -13,8 +13,16 @@ import { addDays, formatShort, startOfMonth, todayKey, fromKey } from '../lib/da
 import { currentWeight, weightChange } from '../lib/body';
 import { goalProgress, overallGoalCompletion } from '../lib/goals';
 import { groupName } from '../data/exercises';
+import { AnnualTable, CardioCharts, StrengthCharts } from '../components/TrainingCharts';
+import { WeeklyMuscleSets, YearGrid } from '../components/ProgressViews';
 
 type Metric = 'maxWeight' | 'e1rm' | 'volume';
+type Tab = 'overview' | 'strength' | 'cardio';
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'strength', label: 'Strength' },
+  { id: 'cardio', label: 'Cardio' },
+];
 
 export default function Progress() {
   const { sessions, settings, records, measurements, profile, goals, water } = useData();
@@ -23,6 +31,9 @@ export default function Progress() {
   const [freqRange, setFreqRange] = useState<'30' | 'all'>('30');
   const [metric, setMetric] = useState<Metric>('maxWeight');
   const [prSort, setPrSort] = useState<'recent' | 'heaviest'>('heaviest');
+  const [params, setParams] = useSearchParams();
+  const tabParam = params.get('tab');
+  const tab: Tab = tabParam === 'strength' || tabParam === 'cardio' ? tabParam : 'overview';
 
   const usage = useMemo(() => exerciseUsage(sessions).sort((a, b) => b.count - a.count), [sessions]);
   const [exercise, setExercise] = useState<string>('');
@@ -65,150 +76,178 @@ export default function Progress() {
     <div>
       <PageHeader title="Progress" sub="Consistency, records and trends" />
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <Stat
-          index={0}
-          label="Consistency streak"
-          tone="gold"
-          value={
-            <span className="inline-flex items-center gap-1.5">
-              <Fire size={22} weight="fill" className={st.current > 0 ? 'anim-flicker' : ''} />
-              <CountUp value={st.current} format={(n) => `${Math.round(n)}d`} />
-            </span>
-          }
-          sub={`Longest ${st.longest} days`}
-        />
-        <Stat
-          index={1}
-          label="Days this month"
-          value={
-            <span className="inline-flex items-center gap-1.5">
-              <CalendarCheck size={22} weight="bold" />
-              {month.days}
-            </span>
-          }
-          sub={`of ${dayOfMonth} days so far`}
-        />
-        <Stat index={2} label="Body weight" value={cw !== undefined ? fmtNum(cw, 1) : '—'} sub={wc30 !== undefined ? `${wc30 >= 0 ? '+' : ''}${fmtNum(wc30, 1)} ${wu} in 30 days` : wu} />
-        <Stat index={3} label="Goal completion" tone="str" value={goalPct !== undefined ? `${goalPct}%` : '—'} sub={`${active.length} active goals`} />
+      <div className="sticky top-0 z-20 -mx-4 mb-4 flex gap-1 border-b border-line bg-bg/85 px-4 py-2 pt-safe backdrop-blur-md">
+        {TABS.map((t) => (
+          <Chip key={t.id} active={tab === t.id} onClick={() => setParams(t.id === 'overview' ? {} : { tab: t.id }, { replace: true })} className="flex-1">
+            {t.label}
+          </Chip>
+        ))}
       </div>
 
-      <div className="mt-2 grid gap-2 md:grid-cols-2">
-        <ChartCard index={0} title="Active days per month" sub="Last 12 months">
-          <TrendBars data={monthly} dataKey="activeDays" series="gold" unit="days" height={170} />
-        </ChartCard>
-        <ChartCard
-          index={1}
-          title="Body weight trend"
-          sub={bodyTrend.length ? `${bodyTrend.length} weigh-ins, ${wu}` : 'No weigh-ins yet'}
-          right={
-            <Link to="/profile" className="text-sm text-muted underline-offset-4 hover:underline">
-              Log weight
-            </Link>
-          }
-        >
-          {bodyTrend.length > 1 ? (
-            <TrendLine data={bodyTrend} dataKey="weight" series="ink" unit={wu} height={170} />
-          ) : (
-            <div className="flex h-[170px] flex-col items-center justify-center gap-2 text-center text-sm text-muted">
-              <Scales size={28} weight="bold" />
-              Log your weight on the Profile screen to see the trend.
-            </div>
-          )}
-        </ChartCard>
-      </div>
-
-      {goalRows.length > 0 && (
+      {tab === 'overview' && (
         <>
-          <SectionTitle
-            action={
-              <Link to="/goals" className="text-sm text-muted underline-offset-4 hover:underline">
-                Manage
-              </Link>
-            }
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <Target size={12} weight="bold" /> Goals
-            </span>
-          </SectionTitle>
-          <Card>
-            <ul className="space-y-4">
-              {goalRows.map(({ g, p }) => (
-                <li key={g.id}>
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="font-medium">{g.title}</span>
-                    <span className="num text-sm text-muted">{p.pct}%</span>
-                  </div>
-                  <div className="num mb-1.5 text-xs text-muted">{p.label}</div>
-                  <Bar pct={p.pct} tone={p.done ? 'str' : 'gold'} />
-                </li>
-              ))}
-            </ul>
-          </Card>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <Stat
+              index={0}
+              label="Consistency streak"
+              tone="gold"
+              value={
+                <span className="inline-flex items-center gap-1.5">
+                  <Fire size={22} weight="fill" className={st.current > 0 ? 'anim-flicker' : ''} />
+                  <CountUp value={st.current} format={(n) => `${Math.round(n)}d`} />
+                </span>
+              }
+              sub={`Longest ${st.longest} days`}
+            />
+            <Stat
+              index={1}
+              label="Days this month"
+              value={
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarCheck size={22} weight="bold" />
+                  {month.days}
+                </span>
+              }
+              sub={`of ${dayOfMonth} days so far`}
+            />
+            <Stat index={2} label="Body weight" value={cw !== undefined ? fmtNum(cw, 1) : '—'} sub={wc30 !== undefined ? `${wc30 >= 0 ? '+' : ''}${fmtNum(wc30, 1)} ${wu} in 30 days` : wu} />
+            <Stat index={3} label="Goal completion" tone="str" value={goalPct !== undefined ? `${goalPct}%` : '—'} sub={`${active.length} active goals`} />
+          </div>
+
+          <div className="mt-2">
+            <YearGrid />
+          </div>
+
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            <ChartCard index={0} title="Active days per month" sub="Last 12 months">
+              <TrendBars data={monthly} dataKey="activeDays" series="gold" unit="days" height={170} />
+            </ChartCard>
+            <ChartCard
+              index={1}
+              title="Body weight trend"
+              sub={bodyTrend.length ? `${bodyTrend.length} weigh-ins, ${wu}` : 'No weigh-ins yet'}
+              right={
+                <Link to="/profile" className="text-sm text-muted underline-offset-4 hover:underline">
+                  Log weight
+                </Link>
+              }
+            >
+              {bodyTrend.length > 1 ? (
+                <TrendLine data={bodyTrend} dataKey="weight" series="ink" unit={wu} height={170} />
+              ) : (
+                <div className="flex h-[170px] flex-col items-center justify-center gap-2 text-center text-sm text-muted">
+                  <Scales size={28} weight="bold" />
+                  Log your weight on the Profile screen to see the trend.
+                </div>
+              )}
+            </ChartCard>
+          </div>
+
+          {goalRows.length > 0 && (
+            <>
+              <SectionTitle
+                action={
+                  <Link to="/goals" className="text-sm text-muted underline-offset-4 hover:underline">
+                    Manage
+                  </Link>
+                }
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Target size={12} weight="bold" /> Goals
+                </span>
+              </SectionTitle>
+              <Card>
+                <ul className="space-y-4">
+                  {goalRows.map(({ g, p }) => (
+                    <li key={g.id}>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-medium">{g.title}</span>
+                        <span className="num text-sm text-muted">{p.pct}%</span>
+                      </div>
+                      <div className="num mb-1.5 text-xs text-muted">{p.label}</div>
+                      <Bar pct={p.pct} tone={p.done ? 'str' : 'gold'} />
+                    </li>
+                  ))}
+                </ul>
+              </Card>
         </>
       )}
 
       <HydrationProgress />
 
-      <SectionTitle>Exercise progression</SectionTitle>
-      {usage.length ? (
-        <ChartCard
-          title={ex}
-          sub={
-            prog.length > 1 ? (
-              <span className={change >= 0 ? 'text-str' : 'text-danger'}>
-                {change >= 0 ? '+' : ''}
-                {change.toFixed(1)}% since {formatShort(prog[0].date)}
-              </span>
-            ) : (
-              'Log this exercise again to see a trend'
-            )
-          }
-        >
-          <select value={ex} onChange={(e) => setExercise(e.target.value)} className={`${inputCls} mb-3`} aria-label="Exercise">
-            {usage.map((u) => (
-              <option key={u.exercise} value={u.exercise}>
-                {u.exercise} ({u.count}x)
-              </option>
-            ))}
-          </select>
-          <div className="mb-3 flex gap-1">
-            <Chip active={metric === 'maxWeight'} onClick={() => setMetric('maxWeight')}>
-              Top weight
-            </Chip>
-            <Chip active={metric === 'e1rm'} onClick={() => setMetric('e1rm')}>
-              Est. 1RM
-            </Chip>
-            <Chip active={metric === 'volume'} onClick={() => setMetric('volume')}>
-              Volume
-            </Chip>
-          </div>
-          <TrendLine data={prog} dataKey={metric} series="strength" unit={wu} />
-        </ChartCard>
-      ) : (
-        <p className="text-sm text-muted">Log strength workouts to track progression.</p>
+      <div className="mt-2">
+        <AnnualTable />
+      </div>
+        </>
       )}
 
-      {improvement.length > 0 && (
+      {tab === 'cardio' && <CardioCharts />}
+
+      {tab === 'strength' && (
         <>
-          <SectionTitle>Strength improvement</SectionTitle>
-          <Card>
-            <p className="mb-3 text-xs text-muted">Estimated 1RM: first session vs best of your last three.</p>
-            <ul className="divide-y divide-line">
-              {improvement.map((r) => (
-                <li key={r.exercise} className="flex items-center gap-3 py-2.5">
-                  <span className="min-w-0 flex-1 truncate">{r.exercise}</span>
-                  <span className="num text-sm text-muted">
-                    {fmtNum(r.first, 1)} → {fmtNum(r.latest, 1)}
+          <WeeklyMuscleSets />
+
+          <StrengthCharts />
+
+          <SectionTitle>Exercise progression</SectionTitle>
+          {usage.length ? (
+            <ChartCard
+              title={ex}
+              sub={
+                prog.length > 1 ? (
+                  <span className={change >= 0 ? 'text-str' : 'text-danger'}>
+                    {change >= 0 ? '+' : ''}
+                    {change.toFixed(1)}% since {formatShort(prog[0].date)}
                   </span>
-                  <span className={`num inline-flex w-20 items-center justify-end gap-0.5 font-medium ${r.change >= 0 ? 'text-str' : 'text-danger'}`}>
-                    {r.change >= 0 ? <ArrowUpRight size={14} weight="bold" /> : <ArrowDownRight size={14} weight="bold" />}
-                    {Math.abs(r.change).toFixed(1)}%
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Card>
+                ) : (
+                  'Log this exercise again to see a trend'
+                )
+              }
+            >
+              <select value={ex} onChange={(e) => setExercise(e.target.value)} className={`${inputCls} mb-3`} aria-label="Exercise">
+                {usage.map((u) => (
+                  <option key={u.exercise} value={u.exercise}>
+                    {u.exercise} ({u.count}x)
+                  </option>
+                ))}
+              </select>
+              <div className="mb-3 flex gap-1">
+                <Chip active={metric === 'maxWeight'} onClick={() => setMetric('maxWeight')}>
+                  Top weight
+                </Chip>
+                <Chip active={metric === 'e1rm'} onClick={() => setMetric('e1rm')}>
+                  Est. 1RM
+                </Chip>
+                <Chip active={metric === 'volume'} onClick={() => setMetric('volume')}>
+                  Volume
+                </Chip>
+              </div>
+              <TrendLine data={prog} dataKey={metric} series="strength" unit={wu} />
+            </ChartCard>
+          ) : (
+            <p className="text-sm text-muted">Log strength workouts to track progression.</p>
+          )}
+
+          {improvement.length > 0 && (
+            <>
+              <SectionTitle>Strength improvement</SectionTitle>
+              <Card>
+                <p className="mb-3 text-xs text-muted">Estimated 1RM: first session vs best of your last three.</p>
+                <ul className="divide-y divide-line">
+                  {improvement.map((r) => (
+                    <li key={r.exercise} className="flex items-center gap-3 py-2.5">
+                      <span className="min-w-0 flex-1 truncate">{r.exercise}</span>
+                      <span className="num text-sm text-muted">
+                        {fmtNum(r.first, 1)} → {fmtNum(r.latest, 1)}
+                      </span>
+                      <span className={`num inline-flex w-20 items-center justify-end gap-0.5 font-medium ${r.change >= 0 ? 'text-str' : 'text-danger'}`}>
+                        {r.change >= 0 ? <ArrowUpRight size={14} weight="bold" /> : <ArrowDownRight size={14} weight="bold" />}
+                        {Math.abs(r.change).toFixed(1)}%
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
         </>
       )}
 
@@ -308,6 +347,8 @@ export default function Progress() {
             </table>
           </Card>
           <p className="mt-2 px-1 text-xs text-muted">e1RM is the estimated one-rep max: weight × (1 + reps ÷ 30), the Epley formula.</p>
+        </>
+      )}
         </>
       )}
     </div>

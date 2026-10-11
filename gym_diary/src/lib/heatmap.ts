@@ -23,6 +23,7 @@ const emptyLoads = () => Object.fromEntries(REGIONS.map((r) => [r.id, 0])) as Re
  * (e.g. push-ups ≈ 65 %), so they show up on the map even when logged with 0 extra weight.
  */
 export function setLoad(set: SetEntry, bw: number | undefined, bodyWeight: number) {
+  if (set.type === 'warmup') return 0;
   const reps = set.reps || 0;
   const extra = set.weight || 0;
   return reps * (extra + (bw ? bodyWeight * bw : 0));
@@ -45,7 +46,7 @@ export function sessionsLoads(list: Session[], bodyWeight: number) {
 /** Same as sessionsLoads but counting sets, not weight (used when nothing has a weight yet). */
 export function sessionsSetLoads(list: Session[]) {
   const loads = emptyLoads();
-  for (const s of list) for (const e of s.strength) entryLoads({ ...e, sets: e.sets.map(() => ({ reps: 1, weight: 1 })) }, 0, loads);
+  for (const s of list) for (const e of s.strength) entryLoads({ ...e, sets: e.sets.map((x) => ({ type: x.type, reps: 1, weight: 1 })) }, 0, loads);
   return loads;
 }
 
