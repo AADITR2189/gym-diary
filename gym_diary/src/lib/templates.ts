@@ -237,7 +237,7 @@ function poolStatus(sessions: Session[], today: DateKey) {
       if (s.date > today || !e.sets.length) continue;
       for (const r of exerciseMeta(e.exercise, e.muscleGroup).primary) if (!last.has(r) || s.date > last.get(r)!) last.set(r, s.date);
       // Count sets (not weight) so heavy leg days don't drown out small muscles.
-      if (s.date >= from) entryLoads({ ...e, sets: e.sets.map((x) => ({ type: x.type, reps: 1, weight: 1 })) }, 0, week);
+      if (s.date >= from) entryLoads({ ...e, bw: undefined, sets: e.sets.map((x) => ({ type: x.type, reps: 1, weight: 1 })) }, 0, week);
     }
   }
   const maxWeek = Math.max(1, ...Object.values(week));

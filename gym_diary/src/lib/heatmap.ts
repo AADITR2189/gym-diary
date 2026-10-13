@@ -22,16 +22,19 @@ const emptyLoads = () => Object.fromEntries(REGIONS.map((r) => [r.id, 0])) as Re
  * Weight moved in one set, in the user's weight unit. Bodyweight exercises add a share of body weight
  * (e.g. push-ups ≈ 65 %), so they show up on the map even when logged with 0 extra weight.
  */
-export function setLoad(set: SetEntry, bw: number | undefined, bodyWeight: number) {
+export function setLoad(set: SetEntry, bw: number | undefined, bodyWeight: number, entryBw?: number) {
   if (set.type === 'warmup') return 0;
-  const reps = set.reps || 0;
+  // Timed holds count one "rep" per 5 seconds, so a 60 s plank shows up like a set of 12.
+  const reps = set.sec ? set.sec / 5 : set.reps || 0;
   const extra = set.weight || 0;
-  return reps * (extra + (bw ? bodyWeight * bw : 0));
+  // Body-weight mode saves the body weight counted per rep on the entry; otherwise use the exercise's share.
+  const body = entryBw ?? (bw ? bodyWeight * bw : 0);
+  return reps * (extra + body);
 }
 
 export function entryLoads(e: StrengthEntry, bodyWeight: number, into: RegionLoads = emptyLoads()) {
   const meta = exerciseMeta(e.exercise, e.muscleGroup);
-  const load = e.sets.reduce((a, s) => a + setLoad(s, meta.bw, bodyWeight), 0);
+  const load = e.sets.reduce((a, s) => a + setLoad(s, meta.bw, bodyWeight, e.bw), 0);
   for (const r of meta.primary) into[r] += load * PRIMARY_SHARE;
   for (const r of meta.secondary) into[r] += load * SECONDARY_SHARE;
   return into;
@@ -46,7 +49,7 @@ export function sessionsLoads(list: Session[], bodyWeight: number) {
 /** Same as sessionsLoads but counting sets, not weight (used when nothing has a weight yet). */
 export function sessionsSetLoads(list: Session[]) {
   const loads = emptyLoads();
-  for (const s of list) for (const e of s.strength) entryLoads({ ...e, sets: e.sets.map((x) => ({ type: x.type, reps: 1, weight: 1 })) }, 0, loads);
+  for (const s of list) for (const e of s.strength) entryLoads({ ...e, bw: undefined, sets: e.sets.map((x) => ({ type: x.type, reps: 1, weight: 1 })) }, 0, loads);
   return loads;
 }
 

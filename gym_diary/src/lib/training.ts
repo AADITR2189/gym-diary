@@ -1,8 +1,8 @@
-import type { DateKey, FitnessGoalFocus, Level, Session, SetEntry, Settings } from '../types';
+import type { DateKey, FitnessGoalFocus, Level, MuscleGroup, Session, SetEntry, Settings } from '../types';
 import { COMPOUNDS } from '../data/templateCatalog';
 import { REGIONS, exerciseMeta, type Region } from '../data/muscles';
 import { addDays, startOfWeek, todayKey } from './date';
-import { sessionCardioMin, workSets } from './stats';
+import { fmtSec, sessionCardioMin, workSets } from './stats';
 
 // ---------- Progressive overload ----------
 
@@ -16,6 +16,8 @@ export function repRange(goal: FitnessGoalFocus | undefined, exercise: string): 
 export interface Suggestion {
   weight: number;
   reps: number;
+  /** Timed exercises: seconds to aim for. */
+  sec?: number;
   /** Why: shown under the suggestion. */
   reason: string;
 }
@@ -24,7 +26,15 @@ export interface Suggestion {
  * Double progression: add reps until every working set reaches the top of the range,
  * then add weight and drop back to the bottom of the range.
  */
-export function suggestNext(last: SetEntry[] | null, range: [number, number], unit: Settings['weightUnit']): Suggestion | null {
+export function suggestNext(last: SetEntry[] | null, range: [number, number], unit: Settings['weightUnit'], timed?: boolean): Suggestion | null {
+  if (timed) {
+    // Holds: beat your longest hold by 5 seconds.
+    const holds = workSets(last ?? []).filter((s) => (s.sec ?? 0) > 0);
+    if (!holds.length) return null;
+    const best = Math.max(...holds.map((s) => s.sec!));
+    const w = Math.max(...holds.map((s) => s.weight || 0));
+    return { weight: w, reps: 0, sec: best + 5, reason: `Your longest hold last time was ${fmtSec(best)}. Add 5 seconds.` };
+  }
   const sets = workSets(last ?? []).filter((s) => s.reps > 0);
   if (!sets.length) return null;
   const [lo, hi] = range;
@@ -43,6 +53,36 @@ export function suggestNext(last: SetEntry[] | null, range: [number, number], un
   const reps = Math.min(hi, Math.max(lo, minReps + 1));
   return { weight: top, reps, reason: `Same weight, one more rep. At ${hi} reps on every set, add weight.` };
 }
+
+// ---------- Body-weight and timed exercises ----------
+
+/** Exercises logged as holds (seconds) rather than reps, unless you switch them. */
+export const TIMED_EXERCISES = new Set([
+  'Plank',
+  'Side Plank',
+  'Copenhagen Plank',
+  'Wall Sit',
+  'Dead Hang',
+  'Hollow Body Hold',
+  'Suitcase Carry',
+  'Farmer Walk',
+  'L-Sit',
+]);
+
+// Only exact names plus anything called a "hold": "Hang Clean" and "Plank Shoulder Taps" are rep exercises.
+export const isTimedByDefault = (exercise: string) => TIMED_EXERCISES.has(exercise) || /\bhold\b/i.test(exercise);
+
+/** Share of body weight an exercise moves (push-ups ≈ 65 %). Bodyweight exercises without a known share count it all. */
+export function bodyShare(exercise: string, group: MuscleGroup): number {
+  const meta = exerciseMeta(exercise, group);
+  return meta.bw ?? 1;
+}
+
+/** Body-weight mode is on by default for bodyweight exercises (push-ups, pull-ups, leg raises…). */
+export const isBodyweightByDefault = (exercise: string, group: MuscleGroup) => exerciseMeta(exercise, group).equipment === 'bodyweight';
+
+/** Body weight counted per rep, rounded to 0.1. */
+export const bwPerRep = (bodyWeight: number, share: number) => Math.round(bodyWeight * share * 10) / 10;
 
 // ---------- Plate calculator ----------
 
@@ -83,7 +123,7 @@ export function regionSets(sessions: Session[], from: DateKey, to: DateKey) {
   for (const s of sessions) {
     if (s.date < from || s.date > to) continue;
     for (const e of s.strength) {
-      const n = workSets(e.sets).filter((x) => x.reps > 0 || x.weight > 0).length;
+      const n = workSets(e.sets).filter((x) => x.reps > 0 || x.weight > 0 || (x.sec ?? 0) > 0).length;
       if (!n) continue;
       const meta = exerciseMeta(e.exercise, e.muscleGroup);
       for (const r of meta.primary) out[r] += n;

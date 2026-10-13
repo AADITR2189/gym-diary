@@ -12,6 +12,7 @@ import {
   dailyVolume,
   exerciseProgression,
   exerciseUsage,
+  fmtBest,
   fmtMinutes,
   fmtNum,
   inRange,
@@ -56,7 +57,7 @@ export function StrengthCharts() {
       topEx: usage.slice(0, 5),
       topExercise,
       topProg: topExercise ? exerciseProgression(sessions, topExercise).map((r) => ({ ...r, label: formatShort(r.date) })) : [],
-      prs: [...records].sort((a, b) => (a.maxWeightDate < b.maxWeightDate ? 1 : -1)).slice(0, 4),
+      prs: [...records].sort((a, b) => ((a.maxWeightDate || a.bestTimeDate || '') < (b.maxWeightDate || b.bestTimeDate || '') ? 1 : -1)).slice(0, 4),
     };
   }, [sessions, settings.weekStartsOn, records]);
   const trendData = trend === 'week' ? d.weekly : d.monthly;
@@ -104,7 +105,7 @@ export function StrengthCharts() {
                   <Trophy size={16} weight="fill" className="text-gold" />
                   <span className="flex-1 truncate">{p.exercise}</span>
                   <span className="num font-medium">
-                    {fmtNum(p.maxWeight, 1)} {wu} <span className="text-muted">× {p.maxWeightReps}</span>
+                    {fmtBest(p, wu)}
                   </span>
                 </li>
               ))}

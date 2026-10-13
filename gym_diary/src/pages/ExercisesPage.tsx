@@ -7,7 +7,7 @@ import { MuscleEditor, type MuscleChoice } from '../components/MuscleEditor';
 import { updateCustomExercise } from '../db/db';
 import { FavStar, FilterRow, useExerciseSearch, type ExerciseFilter } from '../components/ExercisePicker';
 import { groupName } from '../data/exercises';
-import { fmtNum } from '../lib/stats';
+import { fmtBest, fmtNum, fmtSet } from '../lib/stats';
 import { formatShort, todayKey } from '../lib/date';
 import BodyMap from '../components/BodyMap';
 import { EQUIPMENT_LABEL, exerciseMeta, regionInfo } from '../data/muscles';
@@ -28,7 +28,7 @@ export default function ExercisesPage() {
 
   const history = (name: string) =>
     sessions
-      .flatMap((s) => s.strength.filter((e) => e.exercise === name).map((e) => ({ date: s.date, sets: e.sets })))
+      .flatMap((s) => s.strength.filter((e) => e.exercise === name).map((e) => ({ date: s.date, e })))
       .slice(0, 5);
 
   return (
@@ -70,7 +70,7 @@ export default function ExercisesPage() {
                       <div className="truncate font-medium">{it.name}</div>
                       <div className="num text-xs text-muted">
                         {u ? `${u.count} sessions · last ${formatShort(u.last)}` : 'Not logged yet'}
-                        {pr && pr.maxWeight > 0 && ` · best ${fmtNum(pr.maxWeight, 1)} ${settings.weightUnit}`}
+                        {pr && ` · best ${fmtBest(pr, settings.weightUnit)}`}
                       </div>
                     </div>
                     <Tag>{groupName(it.group)}</Tag>
@@ -85,7 +85,8 @@ export default function ExercisesPage() {
                       <div className="mb-2 flex items-center gap-2 text-sm">
                         <Trophy size={14} weight="fill" className="text-gold" />
                         <span className="num">
-                          Best {fmtNum(pr.maxWeight, 1)} {settings.weightUnit} × {pr.maxWeightReps} · e1RM {fmtNum(pr.best1rm, 1)}
+                          Best {fmtBest(pr, settings.weightUnit)}
+                          {pr.best1rm > 0 && ` · e1RM ${fmtNum(pr.best1rm, 1)}`}
                         </span>
                       </div>
                     )}
@@ -93,7 +94,7 @@ export default function ExercisesPage() {
                       <ul className="num space-y-1 font-mono text-xs text-muted">
                         {history(it.name).map((h, i) => (
                           <li key={i}>
-                            {formatShort(h.date)} — {h.sets.map((x) => `${x.weight}×${x.reps}`).join(', ')}
+                            {formatShort(h.date)} — {h.e.sets.map((x) => fmtSet(x, h.e)).join(', ')}
                           </li>
                         ))}
                       </ul>
