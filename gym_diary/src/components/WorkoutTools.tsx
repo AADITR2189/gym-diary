@@ -36,7 +36,7 @@ export function primeSound() {
     audio = null;
   }
 }
-function beep() {
+export function beep() {
   if (!audio) return;
   const t = audio.currentTime;
   [0, 0.25, 0.5].forEach((d, i) => {

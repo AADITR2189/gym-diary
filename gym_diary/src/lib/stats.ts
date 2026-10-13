@@ -21,8 +21,27 @@ export function setLabels(sets: SetEntry[]): string[] {
   });
 }
 
-export const setVolume = (s: SetEntry) => (isWorkSet(s) ? (s.reps || 0) * (s.weight || 0) : 0);
-export const entryVolume = (e: StrengthEntry) => e.sets.reduce((a, s) => a + setVolume(s), 0);
+/** Reps × weight. In body-weight mode `bw` (body weight counted per rep) is added to the weight. Timed sets have no reps, so no volume. */
+export const setVolume = (s: SetEntry, bw = 0) => (isWorkSet(s) ? (s.reps || 0) * ((s.weight || 0) + bw) : 0);
+export const entryVolume = (e: StrengthEntry) => e.sets.reduce((a, s) => a + setVolume(s, e.bw), 0);
+
+/** 90 → "1:30". */
+export const fmtSec = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+
+/** Short text for one set: "60×8", "BW+10×8", "BW×12", "1:30" or "+10 · 1:30". */
+export function fmtSet(x: SetEntry, e?: Pick<StrengthEntry, 'bw' | 'timed'>) {
+  const w = x.weight || 0;
+  if (e?.timed || x.sec) return `${w ? `+${w} · ` : ''}${fmtSec(x.sec || 0)}`;
+  const load = e?.bw !== undefined ? (w ? `BW+${w}` : 'BW') : String(w);
+  return `${load}×${x.reps}`;
+}
+
+/** Best-set text for a record: "100 kg × 5", "12 reps", or "1:30 hold". */
+export function fmtBest(p: PersonalRecord, unit: string) {
+  if (p.bestTimeSec && !p.maxWeightReps) return `${fmtSec(p.bestTimeSec)} hold`;
+  if (!p.maxWeight) return `${p.maxWeightReps} reps`;
+  return `${fmtNum(p.maxWeight, 1)} ${unit} × ${p.maxWeightReps}`;
+}
 export const sessionVolume = (s: Session) => s.strength.reduce((a, e) => a + entryVolume(e), 0);
 export const sessionCardioMin = (s: Session) => s.cardio.reduce((a, c) => a + (c.durationMin || 0), 0);
 export const sessionDistance = (s: Session) => s.cardio.reduce((a, c) => a + (c.distance || 0), 0);
@@ -176,7 +195,15 @@ export function personalRecords(list: Session[]): PR[] {
           bestSessionVolume: 0,
         } as PR);
       for (const set of e.sets) {
-        if (!set.reps || !isWorkSet(set)) continue;
+        if (!isWorkSet(set)) continue;
+        if (set.sec) {
+          if (set.sec > (pr.bestTimeSec ?? 0)) {
+            pr.bestTimeSec = set.sec;
+            pr.bestTimeDate = s.date;
+          }
+          continue;
+        }
+        if (!set.reps) continue;
         if (set.weight > pr.maxWeight || (set.weight === pr.maxWeight && set.reps > pr.maxWeightReps)) {
           pr.maxWeight = set.weight;
           pr.maxWeightReps = set.reps;
@@ -187,17 +214,17 @@ export function personalRecords(list: Session[]): PR[] {
           pr.best1rm = est;
           pr.best1rmDate = s.date;
         }
-        pr.bestSetVolume = Math.max(pr.bestSetVolume, setVolume(set));
+        pr.bestSetVolume = Math.max(pr.bestSetVolume, setVolume(set, e.bw));
       }
       pr.bestSessionVolume = Math.max(pr.bestSessionVolume, entryVolume(e));
       m.set(e.exercise, pr);
     }
-  return [...m.values()].filter((p) => p.maxWeight > 0 || p.maxWeightReps > 0);
+  return [...m.values()].filter((p) => p.maxWeight > 0 || p.maxWeightReps > 0 || (p.bestTimeSec ?? 0) > 0);
 }
 
 /** Per-session best for one exercise, oldest first — for progression charts. */
 export function exerciseProgression(list: Session[], exercise: string) {
-  const rows: { date: string; maxWeight: number; e1rm: number; volume: number }[] = [];
+  const rows: { date: string; maxWeight: number; e1rm: number; volume: number; time: number }[] = [];
   const sorted = [...list].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt - b.createdAt));
   for (const s of sorted)
     for (const e of s.strength) {
@@ -206,7 +233,8 @@ export function exerciseProgression(list: Session[], exercise: string) {
       rows.push({
         date: s.date,
         maxWeight: Math.max(...sets.map((x) => x.weight || 0)),
-        e1rm: Math.round(Math.max(...sets.map(e1rm)) * 10) / 10,
+        e1rm: Math.round(Math.max(...sets.map((x) => (x.sec ? 0 : e1rm(x)))) * 10) / 10,
+        time: Math.max(0, ...sets.map((x) => x.sec || 0)),
         volume: Math.round(entryVolume(e)),
       });
     }
@@ -280,16 +308,20 @@ export function monthlyTrend(list: Session[], months: number) {
   }));
 }
 
-/** Most recent sets logged for an exercise — used to pre-fill new entries. */
-export function lastSetsFor(list: Session[], exercise: string): StrengthEntry['sets'] | null {
-  let best: { date: string; createdAt: number; sets: StrengthEntry['sets'] } | null = null;
+/** Most recent entry for an exercise (sets, body-weight and timed mode) — used to pre-fill new entries. */
+export function lastEntryFor(list: Session[], exercise: string): StrengthEntry | null {
+  let best: { date: string; createdAt: number; e: StrengthEntry } | null = null;
   for (const s of list)
     for (const e of s.strength)
       if (e.exercise === exercise && e.sets.length) {
-        if (!best || s.date > best.date || (s.date === best.date && s.createdAt > best.createdAt))
-          best = { date: s.date, createdAt: s.createdAt, sets: e.sets };
+        if (!best || s.date > best.date || (s.date === best.date && s.createdAt > best.createdAt)) best = { date: s.date, createdAt: s.createdAt, e };
       }
-  return best ? best.sets.map(({ done: _done, ...x }) => ({ ...x })) : null;
+  return best ? { ...best.e, sets: best.e.sets.map(({ done: _done, ...x }) => ({ ...x })) } : null;
+}
+
+/** Most recent sets logged for an exercise — used to pre-fill new entries. */
+export function lastSetsFor(list: Session[], exercise: string): StrengthEntry['sets'] | null {
+  return lastEntryFor(list, exercise)?.sets ?? null;
 }
 
 /** Volume per calendar day for the last N days, oldest first. */

@@ -8,7 +8,7 @@ import WaterRing from '../components/WaterRing';
 import CountUp from '../components/CountUp';
 import { useHydration } from '../hooks/useHydration';
 import { averageDaily, daysMet, fmtVolume, waterSeries, waterStreak } from '../lib/water';
-import { exerciseProgression, exerciseUsage, fmtNum, inRange, monthlyTrend, streaks, strengthImprovement, summarize, volumeByMuscle } from '../lib/stats';
+import { exerciseProgression, exerciseUsage, fmtBest, fmtNum, inRange, monthlyTrend, streaks, strengthImprovement, summarize, volumeByMuscle } from '../lib/stats';
 import { addDays, formatShort, startOfMonth, todayKey, fromKey } from '../lib/date';
 import { currentWeight, weightChange } from '../lib/body';
 import { goalProgress, overallGoalCompletion } from '../lib/goals';
@@ -16,7 +16,7 @@ import { groupName } from '../data/exercises';
 import { AnnualTable, CardioCharts, StrengthCharts } from '../components/TrainingCharts';
 import { WeeklyMuscleSets, YearGrid } from '../components/ProgressViews';
 
-type Metric = 'maxWeight' | 'e1rm' | 'volume';
+type Metric = 'maxWeight' | 'e1rm' | 'volume' | 'time';
 type Tab = 'overview' | 'strength' | 'cardio';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -42,7 +42,7 @@ export default function Progress() {
   const st = useMemo(() => streaks(sessions), [sessions]);
   const month = useMemo(() => summarize(sessions.filter((s) => inRange(s.date, startOfMonth(today), today))), [sessions, today]);
   const dayOfMonth = fromKey(today).getDate();
-  const strongest = [...records].sort((a, b) => b.best1rm - a.best1rm).slice(0, 5);
+  const strongest = [...records].filter((p) => p.best1rm > 0).sort((a, b) => b.best1rm - a.best1rm).slice(0, 5);
   const prList = [...records].sort((a, b) => (prSort === 'heaviest' ? b.maxWeight - a.maxWeight : a.maxWeightDate < b.maxWeightDate ? 1 : -1));
   const freq = useMemo(
     () => volumeByMuscle(freqRange === '30' ? sessions.filter((s) => s.date >= addDays(today, -29)) : sessions),
@@ -58,8 +58,11 @@ export default function Progress() {
   const goalRows = active.map((g) => ({ g, p: goalProgress(g, sessions, measurements, profile, settings, water) }));
   const goalPct = overallGoalCompletion(goalRows.map((r) => r.p));
 
-  const first = prog[0]?.[metric] ?? 0;
-  const last = prog[prog.length - 1]?.[metric] ?? 0;
+  // Holds (plank, wall sit…) chart the longest hold instead of weight.
+  const isHold = prog.some((r) => r.time > 0);
+  const shown: Metric = isHold ? 'time' : metric === 'time' ? 'maxWeight' : metric;
+  const first = prog[0]?.[shown] ?? 0;
+  const last = prog[prog.length - 1]?.[shown] ?? 0;
   const change = first ? ((last - first) / first) * 100 : 0;
 
   if (!sessions.length && !measurements.length && !water.length)
@@ -211,18 +214,22 @@ export default function Progress() {
                   </option>
                 ))}
               </select>
-              <div className="mb-3 flex gap-1">
-                <Chip active={metric === 'maxWeight'} onClick={() => setMetric('maxWeight')}>
-                  Top weight
-                </Chip>
-                <Chip active={metric === 'e1rm'} onClick={() => setMetric('e1rm')}>
-                  Est. 1RM
-                </Chip>
-                <Chip active={metric === 'volume'} onClick={() => setMetric('volume')}>
-                  Volume
-                </Chip>
-              </div>
-              <TrendLine data={prog} dataKey={metric} series="strength" unit={wu} />
+              {isHold ? (
+                <p className="mb-3 text-xs text-muted">Longest hold per session, in seconds.</p>
+              ) : (
+                <div className="mb-3 flex gap-1">
+                  <Chip active={shown === 'maxWeight'} onClick={() => setMetric('maxWeight')}>
+                    Top weight
+                  </Chip>
+                  <Chip active={shown === 'e1rm'} onClick={() => setMetric('e1rm')}>
+                    Est. 1RM
+                  </Chip>
+                  <Chip active={shown === 'volume'} onClick={() => setMetric('volume')}>
+                    Volume
+                  </Chip>
+                </div>
+              )}
+              <TrendLine data={prog} dataKey={shown} series="strength" unit={isHold ? 's' : wu} />
             </ChartCard>
           ) : (
             <p className="text-sm text-muted">Log strength workouts to track progression.</p>
@@ -335,12 +342,12 @@ export default function Progress() {
                   <tr key={p.exercise} className="border-b border-line last:border-0">
                     <td className="px-4 py-3">
                       <div className="font-medium">{p.exercise}</div>
-                      <div className="text-xs text-muted">{formatShort(p.maxWeightDate)}</div>
+                      <div className="text-xs text-muted">{formatShort(p.maxWeightDate || p.bestTimeDate || '')}</div>
                     </td>
                     <td className="whitespace-nowrap px-2 py-3 text-right">
-                      {fmtNum(p.maxWeight, 1)} {wu} × {p.maxWeightReps}
+                      {fmtBest(p, wu)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-str">{fmtNum(p.best1rm, 1)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-str">{p.best1rm ? fmtNum(p.best1rm, 1) : '—'}</td>
                   </tr>
                 ))}
               </tbody>

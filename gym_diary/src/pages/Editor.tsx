@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak } from '@phosphor-icons/react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { Button, Card, Field, IconBadge, NumberInput, Tag, inputCls } from '../components/ui';
 import { ExercisePicker, CardioPicker, ExerciseAutocomplete } from '../components/ExercisePicker';
-import type { CardioEntry, Level, MuscleGroup, Session, SessionKind, SetType, StrengthEntry, Template } from '../types';
+import type { CardioEntry, Level, MuscleGroup, Session, SessionKind, SetEntry, SetType, StrengthEntry, Template } from '../types';
 import { LEVEL_RULES, prefsFrom, resolveTemplate } from '../lib/templates';
 import { deleteSession, saveSession, saveTemplate, uid } from '../db/db';
 import { formatLong, isValidKey, todayKey } from '../lib/date';
-import { entryVolume, fmtNum, isWorkSet, lastSetsFor, personalRecords, sessionCardioMin, sessionVolume, fmtMinutes, setLabels } from '../lib/stats';
-import { repRange, suggestNext, usesBarbell, type Suggestion } from '../lib/training';
-import { PlateSheet, RestTimerBar, SetTypeSheet, primeSound, savedRestSec, setTypeTone, type RestRun } from '../components/WorkoutTools';
+import { entryVolume, fmtNum, fmtSec, fmtSet, isWorkSet, lastEntryFor, lastSetsFor, personalRecords, sessionCardioMin, sessionVolume, fmtMinutes, setLabels } from '../lib/stats';
+import { bodyWeightFor } from '../lib/heatmap';
+import { currentWeight } from '../lib/body';
+import { bodyShare, bwPerRep, isBodyweightByDefault, isTimedByDefault, repRange, suggestNext, usesBarbell, type Suggestion } from '../lib/training';
+import { PlateSheet, RestTimerBar, SetTypeSheet, beep, primeSound, savedRestSec, setTypeTone, type RestRun } from '../components/WorkoutTools';
 import CountUp from '../components/CountUp';
 import { useFlash } from '../lib/anim';
 import type { PersonalRecord } from '../types';
@@ -42,7 +44,11 @@ function newSession(date: string, kind: SessionKind): Session {
 export default function Editor() {
   const [params] = useSearchParams();
   const nav = useNavigate();
-  const { ready, sessions, userTemplates, settings, categoryOf, profile } = useData();
+  const { ready, sessions, userTemplates, settings, categoryOf, profile, measurements } = useData();
+  // Body weight for body-weight exercises: latest weigh-in, else profile, else an estimate.
+  const bodyWeight = bodyWeightFor(measurements, profile, settings);
+  const bodyWeightKnown = currentWeight(measurements, profile) !== undefined;
+  const bwFor = (exercise: string, group: MuscleGroup) => bwPerRep(bodyWeight, bodyShare(exercise, group));
   const [nextCardio, setNextCardio] = useState<Template['thenCardio']>();
   const [s, setS] = useState<Session | null>(null);
   const [isNew, setIsNew] = useState(true);
@@ -89,15 +95,17 @@ export default function Editor() {
     if (tpl) {
       ns.name = tpl.name;
       ns.strength = tpl.strength.map((t) => {
+        const mode = modeFor(t.exercise, t.muscleGroup);
         const prev = lastSetsFor(sessions, t.exercise) ?? [];
         return {
           id: uid(),
           exercise: t.exercise,
           muscleGroup: t.muscleGroup,
-          // Last-used weight; reps from the template when it sets them.
+          ...mode,
+          // Last-used weight; reps from the template when it sets them. Holds keep their last time.
           sets: Array.from({ length: t.sets }, (_, i) => {
             const p = prev[i] ?? prev[prev.length - 1] ?? { reps: 10, weight: 0 };
-            return { reps: t.reps ?? p.reps, weight: p.weight };
+            return mode.timed ? { reps: 0, weight: p.weight, sec: p.sec || 30 } : { reps: t.reps ?? (p.reps || 10), weight: p.weight };
           }),
         };
       });
@@ -125,9 +133,18 @@ export default function Editor() {
     }
   }, [s, isNew]);
 
+  /** Body-weight and timed mode for a new entry: as you logged it last time, else the exercise's default. */
+  function modeFor(exercise: string, muscleGroup: MuscleGroup): Pick<StrengthEntry, 'bw' | 'timed'> {
+    const last = lastEntryFor(sessions, exercise);
+    const useBw = last ? last.bw !== undefined : isBodyweightByDefault(exercise, muscleGroup);
+    const timed = last ? !!last.timed : isTimedByDefault(exercise);
+    return { bw: useBw ? bwFor(exercise, muscleGroup) : undefined, timed: timed || undefined };
+  }
+
   function makeEntry(exercise: string, muscleGroup: MuscleGroup): StrengthEntry {
+    const mode = modeFor(exercise, muscleGroup);
     const last = lastSetsFor(sessions, exercise);
-    return { id: uid(), exercise, muscleGroup, sets: last ?? [{ reps: 10, weight: 0 }] };
+    return { id: uid(), exercise, muscleGroup, ...mode, sets: last ?? [mode.timed ? { reps: 0, weight: 0, sec: 30 } : { reps: 10, weight: 0 }] };
   }
 
   const stats = useMemo(
@@ -159,13 +176,16 @@ export default function Editor() {
   const prefs = prefsFrom(profile);
   const groups = supersetLetters(s.strength);
 
-  /** Tick a set off. Finishing a set starts the rest timer, except mid-superset where you go straight on. */
-  function toggleDone(entryId: string, i: number) {
+  /**
+   * Tick a set off. Finishing a set starts the rest timer, except mid-superset where you go straight on.
+   * `patch` (e.g. the seconds from the hold timer) is saved with it and always marks the set done.
+   */
+  function toggleDone(entryId: string, i: number, patch?: Partial<SetEntry>) {
     if (!s) return;
     const idx = s.strength.findIndex((e) => e.id === entryId);
     const e = s.strength[idx];
-    const done = !e.sets[i]?.done;
-    updEntry(entryId, (x) => ({ ...x, sets: x.sets.map((st, j) => (j === i ? { ...st, done } : st)) }));
+    const done = patch ? true : !e.sets[i]?.done;
+    updEntry(entryId, (x) => ({ ...x, sets: x.sets.map((st, j) => (j === i ? { ...st, ...patch, done } : st)) }));
     if (!done) return;
     primeSound();
     const nextInGroup = e.superset && s.strength[idx + 1]?.superset === e.superset ? s.strength[idx + 1] : null;
@@ -220,7 +240,12 @@ export default function Editor() {
         ? []
         : normaliseSupersets(s.strength).map((e) => ({
             ...e,
-            sets: e.sets.map((x) => (x.type ? { reps: x.reps || 0, weight: x.weight || 0, type: x.type } : { reps: x.reps || 0, weight: x.weight || 0 })),
+            sets: e.sets.map((x) => {
+              const out: SetEntry = { reps: e.timed ? 0 : x.reps || 0, weight: x.weight || 0 };
+              if (x.type) out.type = x.type;
+              if (e.timed) out.sec = x.sec || 0;
+              return out;
+            }),
           })),
       cardio: isCardio ? s.cardio.map((c) => ({ ...c, category: c.category ?? categoryOf(c.activity) })) : [],
     };
@@ -228,9 +253,9 @@ export default function Editor() {
     setRest(null);
     if (isNew) clearDraft();
     const prs = clean.strength
-      .map((e) => ({ e, best: newPrSet(e, prevBest.get(e.exercise)) }))
+      .map((e) => ({ e, best: newPrLabel(e, prevBest.get(e.exercise), settings.weightUnit) }))
       .filter((x) => x.best)
-      .map((x) => `${x.e.exercise}: ${x.best!.weight} ${settings.weightUnit} × ${x.best!.reps}`);
+      .map((x) => `${x.e.exercise}: ${x.best}`);
     setCelebrate({
       kind: clean.kind,
       sets: clean.strength.reduce((a, e) => a + e.sets.filter(isWorkSet).length, 0),
@@ -343,9 +368,12 @@ export default function Editor() {
                   unit={settings.weightUnit}
                   lastSets={lastSets}
                   group={e.superset ? groups.get(e.superset) : undefined}
-                  suggestion={suggestNext(lastSets, repRange(prefs.goal, e.exercise), settings.weightUnit)}
+                  suggestion={suggestNext(lastSets, repRange(prefs.goal, e.exercise), settings.weightUnit, e.timed)}
+                  bwNow={bwFor(e.exercise, e.muscleGroup)}
+                  bodyWeight={bodyWeight}
+                  bodyWeightKnown={bodyWeightKnown}
                   onPlates={usesBarbell(e.exercise) ? (w) => setPlates(w) : undefined}
-                  onDone={(i) => toggleDone(e.id, i)}
+                  onDone={(i, patch) => toggleDone(e.id, i, patch)}
                   onChange={(fn) => updEntry(e.id, fn)}
                   onRemove={() => update({ strength: normaliseSupersets(s.strength.filter((x) => x.id !== e.id)) })}
                 />
@@ -522,6 +550,9 @@ function StrengthCard({
   group,
   added,
   prev,
+  bwNow,
+  bodyWeight,
+  bodyWeightKnown,
 }: {
   e: StrengthEntry;
   idx: number;
@@ -534,8 +565,12 @@ function StrengthCard({
   group?: string;
   onChange: (fn: (e: StrengthEntry) => StrengthEntry) => void;
   onRemove: () => void;
-  onDone: (i: number) => void;
+  onDone: (i: number, patch?: Partial<SetEntry>) => void;
   onPlates?: (weight: number) => void;
+  /** Body weight counted per rep if body-weight mode were switched on now. */
+  bwNow: number;
+  bodyWeight: number;
+  bodyWeightKnown: boolean;
 }) {
   const [showNotes, setShowNotes] = useState(!!e.notes);
   const [typeFor, setTypeFor] = useState<number | null>(null);
@@ -543,17 +578,67 @@ function StrengthCard({
     onChange((x) => ({ ...x, sets: x.sets.map((st, j) => (j === i ? { ...st, ...patch } : st)) }));
   const last = e.sets[e.sets.length - 1];
   const initialSets = useRef(e.sets.length);
-  const pr = newPrSet(e, prev);
+  const pr = newPrLabel(e, prev, unit);
   const labels = setLabels(e.sets);
   const working = e.sets.filter(isWorkSet);
+  const timed = !!e.timed;
+  const usesBw = e.bw !== undefined;
   const topWeight = Math.max(0, ...working.map((x) => x.weight || 0));
   // Only the top sets change, so pyramids and back-off sets keep their own weights.
   const applySuggestion = (sg: Suggestion) =>
     onChange((x) => ({
       ...x,
-      sets: x.sets.map((st) => (isWorkSet(st) && st.type !== 'drop' && (st.weight || 0) === topWeight ? { ...st, weight: sg.weight, reps: sg.reps } : st)),
+      sets: x.sets.map((st) =>
+        isWorkSet(st) && st.type !== 'drop' && (st.weight || 0) === topWeight ? { ...st, weight: sg.weight, ...(sg.sec ? { sec: sg.sec } : { reps: sg.reps }) } : st,
+      ),
     }));
-  const alreadyApplied = !!suggestion && working.some((st) => st.weight === suggestion.weight && st.reps === suggestion.reps);
+  const alreadyApplied =
+    !!suggestion && working.some((st) => st.weight === suggestion.weight && (suggestion.sec ? st.sec === suggestion.sec : st.reps === suggestion.reps));
+  const suggestionText = !suggestion
+    ? ''
+    : suggestion.sec
+      ? `${suggestion.weight ? `+${suggestion.weight} ${unit} · ` : ''}hold ${fmtSec(suggestion.sec)}`
+      : suggestion.weight > 0
+        ? `${usesBw ? `body weight + ${suggestion.weight}` : suggestion.weight} ${unit} × ${suggestion.reps}`
+        : `${suggestion.reps} reps`;
+
+  // Hold timer: counts down from the set's target time (or up from 0 when it has none).
+  const [run, setRun] = useState<{ i: number; start: number; target: number } | null>(null);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!run) return;
+    const t = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(t);
+  }, [run]);
+  const elapsed = run ? Math.floor((now - run.start) / 1000) : 0;
+  const finishRun = (secs: number) => {
+    if (!run) return;
+    const i = run.i;
+    setRun(null);
+    onDone(i, { sec: Math.max(1, secs) });
+  };
+  useEffect(() => {
+    if (run && run.target > 0 && elapsed >= run.target) {
+      beep();
+      try {
+        navigator.vibrate?.([300, 100, 300]);
+      } catch {
+        /* not supported */
+      }
+      finishRun(run.target);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elapsed, run]);
+
+  const toggleTimed = () =>
+    onChange((x) => ({
+      ...x,
+      timed: x.timed ? undefined : true,
+      sets: x.sets.map(({ done: _d, ...st }) => (x.timed ? { ...st, sec: undefined, reps: st.reps || 10 } : { ...st, reps: 0, sec: st.sec || 30 })),
+    }));
+  const toggleBw = () => onChange((x) => ({ ...x, bw: x.bw === undefined ? bwNow : undefined }));
+  const share = bodyWeight ? Math.round(((e.bw ?? bwNow) / bodyWeight) * 100) : 0;
+
   return (
     <Card className={`p-4 ${added ? 'anim-slide-in' : ''} ${group ? 'border-l-4 border-l-car' : ''}`}>
       <div className="flex items-start gap-3">
@@ -564,10 +649,11 @@ function StrengthCard({
           <div className="font-medium leading-tight">{e.exercise}</div>
           <div className="num text-xs text-muted">
             {group ? `Superset ${group} · ` : ''}
-            {groupName(e.muscleGroup)} · volume {fmtNum(entryVolume(e))} {unit}
+            {groupName(e.muscleGroup)}
+            {!timed && ` · volume ${fmtNum(entryVolume(e))} ${unit}`}
           </div>
         </div>
-        {onPlates && (
+        {onPlates && !timed && (
           <button onClick={() => onPlates(topWeight)} className="grid h-9 w-9 place-items-center text-muted" aria-label="Plate calculator" title="Plate calculator">
             <Calculator size={18} weight="bold" />
           </button>
@@ -579,27 +665,47 @@ function StrengthCard({
           <Trash size={18} weight="bold" />
         </button>
       </div>
+
+      {/* Mode switches */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <ModeToggle on={usesBw} onClick={toggleBw} icon={<PersonSimple size={14} weight="bold" />}>
+          Include body weight
+        </ModeToggle>
+        <ModeToggle on={timed} onClick={toggleTimed} icon={<Timer size={14} weight="bold" />}>
+          Timed (seconds)
+        </ModeToggle>
+      </div>
+      {usesBw && (
+        <p className="num mt-1.5 text-xs text-muted">
+          Counts {share}% of your body weight: <b className="text-ink">{fmtNum(e.bw!, 1)} {unit}</b>
+          {timed ? ' (shown on the muscle map).' : ' per rep.'} Weight below is extra load (vest, belt, dumbbell).
+          {!bodyWeightKnown && (
+            <>
+              {' '}
+              Based on an estimated {fmtNum(bodyWeight, 0)} {unit}.{' '}
+              <Link to="/profile" className="underline">
+                Add your weight
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+
       {pr && (
-        <div
-          key={`${pr.weight}x${pr.reps}`}
-          className="anim-pop mt-2 inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold-soft px-2.5 py-1 text-xs font-semibold text-gold"
-        >
-          <Trophy size={13} weight="fill" /> New PR: {pr.weight} {unit} × {pr.reps}
+        <div key={pr} className="anim-pop mt-2 inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold-soft px-2.5 py-1 text-xs font-semibold text-gold">
+          <Trophy size={13} weight="fill" /> New PR: {pr}
         </div>
       )}
       {lastSets && (
         <div className="mt-2 flex items-center gap-1.5 font-mono text-[11px] text-muted">
-          <ClockCounterClockwise size={12} weight="bold" /> Last time:{' '}
-          {lastSets.map((x) => `${x.type === 'warmup' ? 'W ' : ''}${x.weight}×${x.reps}`).join(', ')}
+          <ClockCounterClockwise size={12} weight="bold" /> Last time: {lastSets.map((x) => `${x.type === 'warmup' ? 'W ' : ''}${fmtSet(x, e)}`).join(', ')}
         </div>
       )}
       {suggestion && (
         <div className="mt-2 flex items-center gap-2 rounded-btn border border-str/25 bg-str-soft px-3 py-2">
           <TrendUp size={18} weight="bold" className="shrink-0 text-str" />
           <div className="min-w-0 flex-1">
-            <div className="num text-sm font-medium text-str">
-              Try today: {suggestion.weight > 0 ? `${suggestion.weight} ${unit} × ${suggestion.reps}` : `${suggestion.reps} reps`}
-            </div>
+            <div className="num text-sm font-medium text-str">Try today: {suggestionText}</div>
             <div className="text-xs text-muted">{suggestion.reason}</div>
           </div>
           {!alreadyApplied && (
@@ -611,40 +717,75 @@ function StrengthCard({
       )}
       <div className="eyebrow mt-4 grid grid-cols-[2.5rem_1fr_1fr_2.75rem] items-center gap-2 text-center">
         <span>Set</span>
-        <span>Weight {unit}</span>
-        <span>Reps</span>
-        <span>Done</span>
+        <span>{usesBw ? `+ extra ${unit}` : `Weight ${unit}`}</span>
+        <span>{timed ? 'Time m:ss' : 'Reps'}</span>
+        <span>{timed ? 'Timer' : 'Done'}</span>
       </div>
       <div className="mt-1.5 space-y-2">
-        {e.sets.map((st, i) => (
-          <SetRow
-            key={i}
-            label={labels[i]}
-            type={st.type}
-            done={!!st.done}
-            weight={st.weight}
-            reps={st.reps}
-            added={i >= initialSets.current}
-            onType={() => setTypeFor(i)}
-            onWeight={(v) => setSet(i, { weight: v ?? 0 })}
-            onReps={(v) => setSet(i, { reps: v ?? 0 })}
-            onDone={() => onDone(i)}
-          />
-        ))}
+        {e.sets.map((st, i) =>
+          timed ? (
+            <TimedSetRow
+              key={i}
+              label={labels[i]}
+              type={st.type}
+              done={!!st.done}
+              weight={st.weight}
+              sec={st.sec ?? 0}
+              running={run?.i === i}
+              shown={run?.i === i ? (run.target ? Math.max(0, run.target - elapsed) : elapsed) : st.sec ?? 0}
+              added={i >= initialSets.current}
+              onType={() => setTypeFor(i)}
+              onWeight={(v) => setSet(i, { weight: v ?? 0 })}
+              onSec={(v) => setSet(i, { sec: v })}
+              onTimer={() => {
+                if (run?.i === i) return finishRun(elapsed);
+                if (st.done) return onDone(i); // undo
+                primeSound();
+                setNow(Date.now());
+                setRun({ i, start: Date.now(), target: st.sec ?? 0 });
+              }}
+            />
+          ) : (
+            <SetRow
+              key={i}
+              label={labels[i]}
+              type={st.type}
+              done={!!st.done}
+              weight={st.weight}
+              reps={st.reps}
+              added={i >= initialSets.current}
+              onType={() => setTypeFor(i)}
+              onWeight={(v) => setSet(i, { weight: v ?? 0 })}
+              onReps={(v) => setSet(i, { reps: v ?? 0 })}
+              onDone={() => onDone(i)}
+            />
+          ),
+        )}
       </div>
       <Button
         size="sm"
         className="mt-3 w-full"
-        onClick={() => onChange((x) => ({ ...x, sets: [...x.sets, last ? { reps: last.reps, weight: last.weight, type: last.type === 'warmup' ? undefined : last.type } : { reps: 10, weight: 0 }] }))}
+        onClick={() =>
+          onChange((x) => ({
+            ...x,
+            sets: [
+              ...x.sets,
+              last
+                ? { reps: last.reps, weight: last.weight, type: last.type === 'warmup' ? undefined : last.type, ...(timed ? { sec: last.sec || 30 } : {}) }
+                : timed
+                  ? { reps: 0, weight: 0, sec: 30 }
+                  : { reps: 10, weight: 0 },
+            ],
+          }))
+        }
       >
         {last ? <CopySimple size={16} weight="bold" /> : <Plus size={16} weight="bold" />} Add set{' '}
-        {last && (
-          <span className="num text-muted">
-            ({last.weight}×{last.reps})
-          </span>
-        )}
+        {last && <span className="num text-muted">({fmtSet(last, e)})</span>}
       </Button>
-      <p className="mt-2 text-center text-[11px] text-muted">Tap a set number to make it a warm-up, drop set or set to failure.</p>
+      <p className="mt-2 text-center text-[11px] text-muted">
+        {timed ? 'Tap ▶ to start the hold timer; it beeps at the target time. Tap ■ to stop early. ' : ''}Tap a set number to make it a warm-up, drop set or set to
+        failure.
+      </p>
       {showNotes && (
         <textarea
           value={e.notes ?? ''}
@@ -672,16 +813,126 @@ function StrengthCard({
   );
 }
 
-/** The heaviest set in this entry if it beats the previous record (heavier, or same weight for more reps). */
-function newPrSet(e: StrengthEntry, prev?: PersonalRecord) {
+function ModeToggle({ on, onClick, icon, children }: { on: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={on}
+      className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors ${
+        on ? 'border-str/40 bg-str-soft text-str' : 'border-line bg-bg text-muted'
+      }`}
+    >
+      {on ? <Check size={14} weight="bold" /> : icon}
+      {children}
+    </button>
+  );
+}
+
+/**
+ * What to show as a new record, or null. Reps: heavier, or same weight for more reps (body weight
+ * counts with no extra load). Holds: longer than your longest hold.
+ */
+function newPrLabel(e: StrengthEntry, prev: PersonalRecord | undefined, unit: string): string | null {
   if (!prev) return null; // first time doing an exercise isn't treated as a PR
+  if (e.timed) {
+    const best = Math.max(0, ...e.sets.filter(isWorkSet).map((st) => st.sec || 0));
+    return prev.bestTimeSec && best > prev.bestTimeSec ? `${fmtSec(best)} hold` : null;
+  }
   let best: { weight: number; reps: number } | null = null;
   for (const st of e.sets) {
-    if (!st.reps || !st.weight || !isWorkSet(st)) continue;
+    if (!st.reps || !isWorkSet(st) || (!st.weight && e.bw === undefined)) continue;
     const beats = st.weight > prev.maxWeight || (st.weight === prev.maxWeight && st.reps > prev.maxWeightReps);
     if (beats && (!best || st.weight > best.weight || (st.weight === best.weight && st.reps > best.reps))) best = { weight: st.weight, reps: st.reps };
   }
-  return best;
+  if (!best) return null;
+  return best.weight ? `${e.bw !== undefined ? 'BW + ' : ''}${best.weight} ${unit} × ${best.reps}` : `${best.reps} reps`;
+}
+
+/** "90" or "1:30" → 90 seconds. */
+function parseTime(v: string): number | undefined {
+  const t = v.trim();
+  if (!t) return undefined;
+  const [a, b] = t.split(':');
+  const n = b !== undefined ? Number(a) * 60 + Number(b) : Number(a);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : undefined;
+}
+
+/** A timed set: optional extra weight, time held (typed as 90 or 1:30) and a start/stop hold timer. */
+function TimedSetRow({
+  label,
+  type,
+  done,
+  weight,
+  sec,
+  running,
+  shown,
+  added,
+  onType,
+  onWeight,
+  onSec,
+  onTimer,
+}: {
+  label: string;
+  type?: SetType;
+  done: boolean;
+  weight: number;
+  sec: number;
+  running: boolean;
+  shown: number;
+  added: boolean;
+  onType: () => void;
+  onWeight: (v: number | undefined) => void;
+  onSec: (v: number | undefined) => void;
+  onTimer: () => void;
+}) {
+  const flash = useFlash(done);
+  const [text, setText] = useState(sec ? fmtSec(sec) : '');
+  useEffect(() => {
+    setText(sec ? fmtSec(sec) : '');
+  }, [sec]);
+  return (
+    <div className={`grid grid-cols-[2.5rem_1fr_1fr_2.75rem] items-center gap-2 rounded-btn ${added ? 'anim-slide-in' : ''} ${flash ? 'anim-set-done' : ''}`}>
+      <button
+        onClick={onType}
+        className={`num mx-auto grid h-9 w-9 place-items-center rounded-full font-semibold ${setTypeTone(type)}`}
+        aria-label={`Set ${label}: change set type or delete`}
+      >
+        {label}
+      </button>
+      <NumberInput value={weight} step={0.5} onChange={onWeight} label={`Set ${label} extra weight`} className={done ? 'border-str/40' : ''} />
+      {running ? (
+        <div className="num grid h-12 place-items-center rounded-btn border border-gold bg-gold-soft text-lg font-semibold text-gold" aria-live="polite">
+          {fmtSec(shown)}
+        </div>
+      ) : (
+        <input
+          type="text"
+          inputMode="numeric"
+          value={text}
+          placeholder="0:30"
+          aria-label={`Set ${label} time held, seconds or minutes:seconds`}
+          onFocus={(ev) => ev.target.select()}
+          onChange={(ev) => setText(ev.target.value)}
+          onBlur={() => {
+            const v = parseTime(text);
+            onSec(v);
+            setText(v ? fmtSec(v) : '');
+          }}
+          className={`num h-12 w-full rounded-btn border bg-bg px-3 text-center text-lg font-medium outline-none focus:border-ink/40 ${done ? 'border-str/40' : 'border-line'}`}
+        />
+      )}
+      <button
+        onClick={onTimer}
+        aria-pressed={done}
+        aria-label={running ? `Stop timer for set ${label}` : done ? `Set ${label} done. Tap to undo` : `Start hold timer for set ${label}`}
+        className={`grid h-11 w-11 place-items-center rounded-btn border transition-colors ${
+          running ? 'border-gold bg-gold text-bg' : done ? 'border-str bg-str text-bg' : 'border-line bg-bg text-muted'
+        }`}
+      >
+        {running ? <Stop size={18} weight="fill" /> : done ? <Check size={18} weight="bold" className={flash ? 'anim-pop' : ''} /> : <Play size={18} weight="fill" />}
+      </button>
+    </div>
+  );
 }
 
 /** Drop superset ids that only one exercise (or non-adjacent exercises) still carries. */

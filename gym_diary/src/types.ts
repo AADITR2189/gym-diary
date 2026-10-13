@@ -41,6 +41,8 @@ export interface SetEntry {
   reps: number;
   weight: number;
   type?: SetType;
+  /** Timed sets (plank, wall sit…): seconds held. Reps stay 0. */
+  sec?: number;
   /** Ticked off during the workout (starts the rest timer). Editor-only, not saved. */
   done?: boolean;
 }
@@ -53,6 +55,10 @@ export interface StrengthEntry {
   notes?: string;
   /** Exercises sharing an id are done back to back as a superset. */
   superset?: string;
+  /** Body-weight mode: weight counted per rep from your body (body weight × share), saved when logged. `weight` is then extra load. */
+  bw?: number;
+  /** Sets are timed holds (seconds) instead of reps. */
+  timed?: boolean;
 }
 
 export interface CardioEntry {
@@ -210,6 +216,9 @@ export interface PersonalRecord {
   best1rmDate: DateKey;
   bestSetVolume: number;
   bestSessionVolume: number;
+  /** Timed exercises: longest hold in seconds. */
+  bestTimeSec?: number;
+  bestTimeDate?: DateKey;
 }
 
 // ---------- Hydration ----------

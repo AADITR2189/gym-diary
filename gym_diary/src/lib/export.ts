@@ -3,7 +3,7 @@ import { baseTargetMl, fmtVolume, targetForDate, totalsByDate } from './water';
 import { ACTIVITY_LEVELS } from '../types';
 import { groupName } from '../data/exercises';
 import { formatLong, todayKey } from './date';
-import { e1rm, fmtMinutes, fmtNum, sessionDuration, sessionVolume, SET_TYPES, setVolume, streaks, summarize, volumeByMuscle, workSets } from './stats';
+import { e1rm, fmtBest, fmtMinutes, fmtNum, fmtSet, sessionDuration, sessionVolume, SET_TYPES, setVolume, streaks, summarize, volumeByMuscle, workSets } from './stats';
 import { goalProgress } from './goals';
 import { currentWeight } from './body';
 
@@ -46,7 +46,7 @@ export async function exportExcel(d: ExportData, from?: string, to?: string) {
   ];
 
   const setsSheet = [
-    ['Date', 'Session', 'Exercise', 'Muscle group', 'Set', 'Set type', 'Reps', `Weight (${wu})`, `Volume (${wu})`, 'Est. 1RM', 'Notes'].map(H),
+    ['Date', 'Session', 'Exercise', 'Muscle group', 'Set', 'Set type', 'Reps', 'Time (s)', `Weight (${wu})`, `Body weight counted (${wu})`, `Volume (${wu})`, 'Est. 1RM', 'Notes'].map(H),
     ...list.flatMap((s) =>
       s.strength.flatMap((e) =>
         e.sets.map((set, i) => [
@@ -56,10 +56,12 @@ export async function exportExcel(d: ExportData, from?: string, to?: string) {
           groupName(e.muscleGroup),
           i + 1,
           SET_TYPES.find((t) => t.id === set.type)?.label ?? 'Normal set',
-          set.reps,
+          e.timed ? null : set.reps,
+          set.sec ?? null,
           set.weight,
-          setVolume(set),
-          set.type === 'warmup' ? null : Math.round(e1rm(set) * 10) / 10,
+          e.bw ?? null,
+          setVolume(set, e.bw),
+          set.type === 'warmup' || e.timed ? null : Math.round(e1rm(set) * 10) / 10,
           i === 0 ? e.notes ?? '' : '',
         ]),
       ),
@@ -74,7 +76,7 @@ export async function exportExcel(d: ExportData, from?: string, to?: string) {
   ];
 
   const prSheet = [
-    ['Exercise', 'Muscle group', `Heaviest (${wu})`, 'Reps', 'Date', 'Est. 1RM', 'Date', `Best set volume`, `Best session volume`].map(H),
+    ['Exercise', 'Muscle group', `Heaviest (${wu})`, 'Reps', 'Date', 'Est. 1RM', 'Date', `Best set volume`, `Best session volume`, 'Longest hold (s)'].map(H),
     ...[...d.records]
       .sort((a, b) => b.best1rm - a.best1rm)
       .map((p) => [
@@ -87,6 +89,7 @@ export async function exportExcel(d: ExportData, from?: string, to?: string) {
         dt(p.best1rmDate),
         p.bestSetVolume,
         p.bestSessionVolume,
+        p.bestTimeSec ?? null,
       ]),
   ];
 
@@ -229,7 +232,7 @@ export async function exportPdf(d: ExportData, from?: string, to?: string) {
     h2('Personal records');
     table(
       ['Exercise', 'Heaviest set', 'Date', 'Est. 1RM'],
-      [...d.records].sort((a, b) => b.best1rm - a.best1rm).map((p) => [p.exercise, `${fmtNum(p.maxWeight, 1)} ${wu} × ${p.maxWeightReps}`, p.maxWeightDate, fmtNum(p.best1rm, 1)]),
+      [...d.records].sort((a, b) => b.best1rm - a.best1rm).map((p) => [p.exercise, fmtBest(p, wu), p.maxWeightDate || p.bestTimeDate || '', p.best1rm ? fmtNum(p.best1rm, 1) : '—']),
     );
   }
 
@@ -271,7 +274,7 @@ export async function exportPdf(d: ExportData, from?: string, to?: string) {
         s.kind === 'cardio' ? 'Cardio' : 'Strength',
         s.kind === 'cardio'
           ? s.cardio.map((c) => `${c.activity} ${c.durationMin}m${c.distance ? ` ${c.distance}${du}` : ''}`).join('; ')
-          : s.strength.map((e) => `${e.exercise} ${e.sets.map((x) => `${x.weight}×${x.reps}`).join(',')}`).join('; '),
+          : s.strength.map((e) => `${e.exercise} ${e.sets.map((x) => fmtSet(x, e)).join(',')}`).join('; '),
         s.kind === 'cardio' ? fmtMinutes(s.cardio.reduce((a, c) => a + c.durationMin, 0)) : `${fmtNum(sessionVolume(s))} ${wu}`,
       ]),
     );

@@ -9,7 +9,7 @@ import { sessionTitle } from '../components/SessionCard';
 import { groupName } from '../data/exercises';
 import { EQUIPMENT_LABEL, exerciseMeta, regionInfo, type Region } from '../data/muscles';
 import { formatLong } from '../lib/date';
-import { entryVolume, fmtMinutes, fmtNum, personalRecords, sessionCardioMin, sessionDuration, sessionVolume, setLabels, workSets } from '../lib/stats';
+import { entryVolume, fmtMinutes, fmtNum, personalRecords, sessionCardioMin, sessionDuration, sessionVolume, setLabels, workSets, fmtSec } from '../lib/stats';
 import { bodyWeightFor, exerciseIntensity, intensities, regionStats, sessionsLoads, sessionsSetLoads } from '../lib/heatmap';
 import type { StrengthEntry } from '../types';
 
@@ -183,7 +183,10 @@ function ExerciseRow({ e, unit, pr }: { e: StrengthEntry; unit: string; pr: bool
             )}
           </div>
           <div className="num truncate text-sm text-muted">
-            {e.sets.length} sets{top > 0 ? ` · top ${top} ${unit}` : ''} · {fmtNum(entryVolume(e))} {unit}
+            {e.sets.length} sets
+            {e.timed
+              ? ` · longest ${fmtSec(Math.max(0, ...e.sets.map((x) => x.sec || 0)))}`
+              : `${top > 0 ? ` · top ${e.bw !== undefined ? 'BW + ' : ''}${top} ${unit}` : ''} · ${fmtNum(entryVolume(e))} ${unit}`}
           </div>
         </div>
         <CaretDown size={16} weight="bold" className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -206,7 +209,7 @@ function ExerciseRow({ e, unit, pr }: { e: StrengthEntry; unit: string; pr: bool
                 <tr>
                   <th className="py-1 font-normal">Set</th>
                   <th className="py-1 font-normal">Weight</th>
-                  <th className="py-1 font-normal">Reps</th>
+                  <th className="py-1 font-normal">{e.timed ? 'Time' : 'Reps'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -214,9 +217,9 @@ function ExerciseRow({ e, unit, pr }: { e: StrengthEntry; unit: string; pr: bool
                   <tr key={i} className={`border-t border-line ${x.type === 'warmup' ? 'text-muted' : ''}`}>
                     <td className="py-1">{labels[i]}</td>
                     <td className="py-1">
-                      {x.weight} {unit}
+                      {e.bw !== undefined ? `BW${x.weight ? ` + ${x.weight} ${unit}` : ''}` : `${x.weight} ${unit}`}
                     </td>
-                    <td className="py-1">{x.reps}</td>
+                    <td className="py-1">{e.timed ? fmtSec(x.sec || 0) : x.reps}</td>
                   </tr>
                 ))}
               </tbody>
