@@ -60,7 +60,7 @@ export function MuscleEditor({ value, onChange }: { value: MuscleChoice; onChang
           );
         })}
       </div>
-      <div className="mt-3 flex gap-3 text-[11px] text-muted">
+      <div className="mt-3 flex gap-3 text-[0.6875rem] text-muted">
         <span className="inline-flex items-center gap-1">
           <span className="h-2.5 w-2.5 rounded-sm bg-str" /> Main (100% of load)
         </span>

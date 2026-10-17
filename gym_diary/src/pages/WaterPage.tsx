@@ -6,6 +6,8 @@ import { useHydration } from '../hooks/useHydration';
 import { Button, Card, Field, NumberInput, SectionTitle, Tag, inputCls } from '../components/ui';
 import WaterRing from '../components/WaterRing';
 import { deleteWaterLog, saveWaterLog, uid } from '../db/db';
+import { toast } from '../lib/dialog';
+import SwipeRow from '../components/SwipeRow';
 import { formatLong, isValidKey, todayKey } from '../lib/date';
 import { fmtVolume, fromUnit, toUnit, unitLabel } from '../lib/water';
 import type { WaterLog } from '../types';
@@ -56,7 +58,7 @@ export default function WaterPage() {
         >
           <ArrowLeft size={18} weight="bold" />
         </button>
-        <h1 className="h-title text-[38px]">Water</h1>
+        <h1 className="h-title text-[2.375rem]">Water</h1>
       </div>
 
       <div className="mt-5">
@@ -81,7 +83,7 @@ export default function WaterPage() {
           <WaterRing ml={h.total} target={h.target} size={150} />
           <div className="min-w-0">
             <div className="eyebrow">{date === todayKey() ? 'Today' : 'This day'}</div>
-            <div className="h-display num mt-1 text-[30px] leading-none text-wat">{fmtVolume(h.total, unit)}</div>
+            <div className="h-display num mt-1 text-[1.875rem] leading-none text-wat">{fmtVolume(h.total, unit)}</div>
             <div className="num mt-1 text-sm text-muted">of {fmtVolume(h.target, unit)} target</div>
             {h.bonus > 0 && <div className="mt-1 text-xs text-muted">includes +{fmtVolume(h.bonus, unit)} for your workout</div>}
             <div className={`mt-2 text-sm font-medium ${h.remaining ? 'text-ink' : 'text-str'}`}>
@@ -102,7 +104,7 @@ export default function WaterPage() {
           >
             <Drop size={18 + i * 4} weight="fill" />
             <span className="h-display num text-xl">{fmtVolume(ml, unit, { short: true })}</span>
-            <span className="text-[11px] opacity-80">{['Glass', 'Bottle', 'Large'][i]}</span>
+            <span className="text-[0.6875rem] opacity-80">{['Glass', 'Bottle', 'Large'][i]}</span>
           </button>
         ))}
       </div>
@@ -125,17 +127,24 @@ export default function WaterPage() {
       {h.logs.length ? (
         <Card className="p-0">
           <ul className="divide-y divide-line">
-            {[...h.logs].reverse().map((w) => (
-              <li key={w.id} className="flex items-center gap-3 px-4 py-2">
+            {[...h.logs].reverse().map((w) => {
+              const remove = async () => {
+                await deleteWaterLog(w.id);
+                toast(`${fmtVolume(w.amountMl, unit)} deleted`, { undo: () => saveWaterLog(w) });
+              };
+              return (
+              <li key={w.id}>
+                <SwipeRow onDelete={remove} label={`Delete ${fmtVolume(w.amountMl, unit)} entry`}>
+                <div className="flex items-center gap-3 px-4 py-2">
                 <Drop size={16} weight="fill" className="shrink-0 text-wat" />
                 <span className="num w-20 shrink-0 text-sm text-muted">{time(w.loggedAt)}</span>
                 {editing === w.id ? (
                   <>
                     <NumberInput value={editVal} onChange={setEditVal} label="Edit amount" className="h-10 text-base" />
-                    <button onClick={() => saveEdit(w)} className="grid h-10 w-10 shrink-0 place-items-center text-str" aria-label="Save amount">
+                    <button onClick={() => saveEdit(w)} className="hit-44 grid h-10 w-10 shrink-0 place-items-center text-str" aria-label="Save amount">
                       <Check size={18} weight="bold" />
                     </button>
-                    <button onClick={() => setEditing(null)} className="grid h-10 w-10 shrink-0 place-items-center text-muted" aria-label="Cancel edit">
+                    <button onClick={() => setEditing(null)} className="hit-44 grid h-10 w-10 shrink-0 place-items-center text-muted" aria-label="Cancel edit">
                       <X size={18} weight="bold" />
                     </button>
                   </>
@@ -147,22 +156,25 @@ export default function WaterPage() {
                         setEditing(w.id);
                         setEditVal(toUnit(w.amountMl, unit));
                       }}
-                      className="grid h-10 w-10 place-items-center text-muted"
+                      className="hit-44 grid h-10 w-10 place-items-center text-muted"
                       aria-label={`Edit ${fmtVolume(w.amountMl, unit)} entry`}
                     >
                       <PencilSimple size={16} weight="bold" />
                     </button>
                     <button
-                      onClick={() => confirm('Delete this entry?') && deleteWaterLog(w.id)}
-                      className="grid h-10 w-10 place-items-center text-muted"
+                      onClick={remove}
+                      className="hit-44 grid h-10 w-10 place-items-center text-muted"
                       aria-label={`Delete ${fmtVolume(w.amountMl, unit)} entry`}
                     >
                       <Trash size={16} weight="bold" />
                     </button>
                   </>
                 )}
+                </div>
+                </SwipeRow>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </Card>
       ) : (

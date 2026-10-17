@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Timer, X, Check, Trash } from '@phosphor-icons/react';
 import { Button, Chip, Field, NumberInput, Sheet } from './ui';
 import type { SetType, Settings } from '../types';
 import { SET_TYPES } from '../lib/stats';
 import { BARS, PLATES, platesPerSide } from '../lib/training';
+import { haptic, sound } from '../lib/feedback';
 
 // ---------- Rest timer ----------
 
@@ -26,31 +26,8 @@ function saveRestSec(n: number) {
   }
 }
 
-let audio: AudioContext | null = null;
-/** Call from a tap so phones allow the sound later. */
-export function primeSound() {
-  try {
-    audio ??= new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    if (audio.state === 'suspended') void audio.resume();
-  } catch {
-    audio = null;
-  }
-}
-export function beep() {
-  if (!audio) return;
-  const t = audio.currentTime;
-  [0, 0.25, 0.5].forEach((d, i) => {
-    const o = audio!.createOscillator();
-    const g = audio!.createGain();
-    o.frequency.value = i === 2 ? 1320 : 880;
-    g.gain.setValueAtTime(0.0001, t + d);
-    g.gain.exponentialRampToValueAtTime(0.3, t + d + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.18);
-    o.connect(g).connect(audio!.destination);
-    o.start(t + d);
-    o.stop(t + d + 0.2);
-  });
-}
+// Sound and haptics live in lib/feedback; re-exported for existing callers.
+export { primeSound } from '../lib/feedback';
 
 export interface RestRun {
   endAt: number;
@@ -60,6 +37,35 @@ export interface RestRun {
 }
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`;
+
+/** Shows the rest timer, and lets it slide back out the way it came in when rest is skipped or over. */
+export function RestTimerSlot({ run, onChange, onStop }: { run: RestRun | null; onChange: (r: RestRun) => void; onStop: () => void }) {
+  const last = useRef(run);
+  if (run) last.current = run;
+  const [shown, setShown] = useState(!!run);
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    if (run) {
+      setShown(true);
+      setLeaving(false);
+      return;
+    }
+    if (!shown) return;
+    setLeaving(true);
+    const t = window.setTimeout(() => {
+      setShown(false);
+      setLeaving(false);
+    }, 200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!run]);
+  if (!shown || !last.current) return null;
+  return (
+    <div className={leaving ? 'anim-slide-out' : ''}>
+      <RestTimerBar run={last.current} onChange={onChange} onStop={onStop} />
+    </div>
+  );
+}
 
 /** Countdown shown above the save bar. Based on an end time, so it stays right if the phone sleeps. */
 export function RestTimerBar({ run, onChange, onStop }: { run: RestRun; onChange: (r: RestRun) => void; onStop: () => void }) {
@@ -77,12 +83,8 @@ export function RestTimerBar({ run, onChange, onStop }: { run: RestRun; onChange
   useEffect(() => {
     if (!over || alerted.current) return;
     alerted.current = true;
-    beep();
-    try {
-      navigator.vibrate?.([250, 120, 250, 120, 400]);
-    } catch {
-      /* not supported */
-    }
+    sound('rest');
+    haptic('warning');
     const t = window.setTimeout(onStop, 6000);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,7 +113,7 @@ export function RestTimerBar({ run, onChange, onStop }: { run: RestRun; onChange
             </Button>
           </>
         )}
-        <button onClick={onStop} className="grid h-9 w-9 place-items-center text-muted" aria-label={over ? 'Close' : 'Skip rest'}>
+        <button onClick={onStop} className="hit-44 grid h-9 w-9 place-items-center text-muted" aria-label={over ? 'Close' : 'Skip rest'}>
           <X size={18} weight="bold" />
         </button>
       </div>
@@ -139,9 +141,8 @@ export function SetTypeSheet({
   onDelete: () => void;
   onClose: () => void;
 }) {
-  // Portalled: the exercise card it is opened from animates with a transform, which would trap a fixed-position sheet.
-  if (!open) return null;
-  return createPortal(
+  // The Sheet renders into document.body itself, so the card's transform can't trap it.
+  return (
     <Sheet open={open} onClose={onClose} title={label}>
       <div className="space-y-2">
         {SET_TYPES.map((t) => {
@@ -165,8 +166,7 @@ export function SetTypeSheet({
           <Trash size={18} weight="bold" /> Delete set
         </Button>
       </div>
-    </Sheet>,
-    document.body,
+    </Sheet>
   );
 }
 

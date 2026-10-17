@@ -26,7 +26,7 @@ import { formatShort, todayKey } from '../lib/date';
 /** Colour scale legend: grey = not trained, then the load gradient. */
 export function HeatLegend({ mode = 'heat' }: { mode?: BodyMapMode }) {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-muted">
+    <div className="flex items-center gap-2 text-[0.6875rem] text-muted">
       <span className="inline-flex items-center gap-1">
         <span className="h-2.5 w-2.5 rounded-sm bg-line" /> None
       </span>
@@ -153,7 +153,7 @@ export function MuscleHeatCard({ index = 0 }: { index?: number }) {
           <div className="mt-3 w-full max-w-[260px]">
             <HeatLegend />
           </div>
-          {!selected && <p className="mt-2 text-center text-[11px] text-muted">Tap a muscle to see its load and exercises.</p>}
+          {!selected && <p className="mt-2 text-center text-[0.6875rem] text-muted">Tap a muscle to see its load and exercises.</p>}
         </div>
         <div className="min-w-0">
           {empty ? (
@@ -175,7 +175,7 @@ export function MuscleHeatCard({ index = 0 }: { index?: number }) {
                   {all ? 'Show less' : 'Show all muscles'}
                 </button>
               )}
-              <p className="mt-2 px-2 text-[11px] leading-snug text-muted">
+              <p className="mt-2 px-2 text-[0.6875rem] leading-snug text-muted">
                 Weight × reps. Main muscles get the full load, helpers half. Bodyweight moves count part of your body weight.
               </p>
             </>
@@ -253,7 +253,7 @@ export function MuscleExercises({ region }: { region: Region }) {
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{x.name}</span>
-                  <span className="block text-[11px] text-muted">
+                  <span className="block text-[0.6875rem] text-muted">
                     {EQUIPMENT_LABEL[x.equipment]}
                     {n ? ` · done ${n}×` : ''}
                   </span>

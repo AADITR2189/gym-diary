@@ -52,7 +52,7 @@ export function TemplateCard({ t, reason, onOpen, className = '' }: { t: Catalog
       </button>
       <button
         onClick={() => toggleFavorite(favoriteKey(t.defId))}
-        className={`absolute right-1 top-1 grid h-9 w-9 place-items-center ${fav ? 'text-gold' : 'text-muted'}`}
+        className={`hit-44 absolute right-1 top-1 grid h-9 w-9 place-items-center ${fav ? 'text-gold' : 'text-muted'}`}
         aria-label={fav ? `Remove ${t.name} from favourites` : `Add ${t.name} to favourites`}
         aria-pressed={fav}
       >
@@ -106,7 +106,7 @@ export function TemplateSheet({ t, onClose, date }: { t: CatalogTemplate | null;
       <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {rows.map(([k, v]) => (
           <div key={k} className="rounded-btn bg-raised px-3 py-2">
-            <dt className="eyebrow text-[10px]">{k}</dt>
+            <dt className="eyebrow text-[0.6875rem]">{k}</dt>
             <dd className="num mt-0.5 text-sm font-medium">{v}</dd>
           </div>
         ))}

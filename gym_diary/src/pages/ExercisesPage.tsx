@@ -41,7 +41,7 @@ export default function ExercisesPage() {
         >
           <ArrowLeft size={18} weight="bold" />
         </button>
-        <h1 className="h-title text-[38px]">Exercises</h1>
+        <h1 className="h-title text-[2.375rem]">Exercises</h1>
       </div>
       <p className="mt-1 text-sm text-muted">
         {items.length} of {search('', 'all').length} exercises. Star the ones you use most.

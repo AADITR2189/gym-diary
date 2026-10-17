@@ -3,7 +3,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { fmtNum } from '../lib/stats';
 import { usePalette, type Palette } from '../lib/theme';
 import { Card } from './ui';
-import { useInView } from '../lib/anim';
+import { prefersReducedMotion, useInView } from '../lib/anim';
 
 // Each chart is single-series in one hue (strength = green, cardio = blue, ...), so identity
 // never depends on colour alone: the chart title names the series and the axis names categories.
@@ -60,8 +60,8 @@ export function ChartCard({
   );
 }
 
-/** Shared grow-in timing for bars and lines. */
-const GROW = { isAnimationActive: true, animationDuration: 900, animationEasing: 'ease-out' as const };
+/** Shared grow-in for bars and lines: quick, so the numbers are readable almost at once; off under reduced motion. */
+const GROW = { isAnimationActive: !prefersReducedMotion(), animationDuration: 350, animationEasing: 'ease-out' as const };
 
 export function TrendBars({
   data,
@@ -122,7 +122,6 @@ export function TrendLine({
           stroke={c}
           strokeWidth={2}
           {...GROW}
-          animationDuration={1200}
           dot={{ r: 4, fill: c, stroke: p.surface, strokeWidth: 2 }}
           activeDot={{ r: 6, stroke: p.surface, strokeWidth: 2 }}
         />

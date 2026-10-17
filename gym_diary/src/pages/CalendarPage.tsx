@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import SwipePager, { type SwipePagerHandle } from '../components/SwipePager';
 import { CaretLeft, CaretRight, Plus, Barbell, Heartbeat, Drop } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { baseTargetMl, fmtVolume, targetForDate, totalsByDate } from '../lib/water';
-import { Card, Empty, PageHeader, Stat } from '../components/ui';
+import { Card, Empty, PageHeader, Stat, HeaderActions } from '../components/ui';
 import SessionCard, { sessionTitle } from '../components/SessionCard';
 import { daysInMonth, formatLong, formatMonth, toKey, todayKey } from '../lib/date';
 import { fmtMinutes, fmtNum, sessionCardioMin, sessionVolume, summarize } from '../lib/stats';
@@ -15,6 +16,7 @@ export default function CalendarPage() {
   const waterTotals = useMemo(() => totalsByDate(water), [water]);
   const waterMet = (k: string) => (waterTotals.get(k) ?? 0) >= targetForDate(k, waterBase, sessions, profile);
   const [params, setParams] = useSearchParams();
+  const pager = useRef<SwipePagerHandle>(null);
   const today = todayKey();
   const selected = params.get('d') ?? today;
   const [cursor, setCursor] = useState(() => {
@@ -62,36 +64,35 @@ export default function CalendarPage() {
 
   return (
     <div>
-      <PageHeader title="Calendar" sub="Tap a day to view or backfill" />
+      <PageHeader title="Calendar" sub="Tap a day, or swipe to change month" right={<HeaderActions />} />
 
       <Card className="p-3">
         <div className="mb-2 flex items-center justify-between">
-          <button onClick={() => move(-1)} className="grid h-11 w-11 place-items-center rounded-btn bg-raised" aria-label="Previous month">
+          <button onClick={() => pager.current?.slide(-1)} className="grid h-11 w-11 place-items-center rounded-btn bg-raised" aria-label="Previous month">
             <CaretLeft size={18} weight="bold" />
           </button>
           <div className="h-title text-2xl">{formatMonth(`${monthPrefix}-01`)}</div>
-          <button onClick={() => move(1)} className="grid h-11 w-11 place-items-center rounded-btn bg-raised" aria-label="Next month">
+          <button onClick={() => pager.current?.slide(1)} className="grid h-11 w-11 place-items-center rounded-btn bg-raised" aria-label="Next month">
             <CaretRight size={18} weight="bold" />
           </button>
         </div>
-        <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium uppercase text-muted">
+        <div className="grid grid-cols-7 gap-1 text-center text-[0.6875rem] font-medium text-muted">
           {heads.map((h) => (
             <div key={h} className="py-1">
               {h}
             </div>
           ))}
         </div>
-        {/* Keyed by month so workout days re-animate in when you change month. */}
-        <div key={monthPrefix} className="grid grid-cols-7 gap-1">
+        {/* Swipe left/right to change month. */}
+        <SwipePager ref={pager} onPage={(d) => move(d)}>
+        <div className="grid grid-cols-7 gap-1">
           {(() => {
-            let litIndex = 0;
             return cells.map((k, i) => {
             if (!k) return <div key={i} />;
             const list = byDate.get(k) ?? [];
             const hasS = list.some((s) => s.kind === 'strength');
             const hasC = list.some((s) => s.kind === 'cardio');
             const hasW = waterMet(k);
-            const order = list.length || hasW ? litIndex++ : -1;
             const isSel = k === selected;
             const isToday = k === today;
             const future = k > today;
@@ -99,9 +100,8 @@ export default function CalendarPage() {
               <button
                 key={k}
                 title={tip(k) || undefined}
-                style={order >= 0 ? { animationDelay: `${order * 35}ms` } : undefined}
                 onClick={() => setParams({ d: k }, { replace: true })}
-                className={`relative flex aspect-square flex-col items-center justify-center rounded-btn text-sm transition-colors ${order >= 0 ? 'anim-day' : ''} ${
+                className={`relative flex aspect-square flex-col items-center justify-center rounded-btn text-sm transition-colors ${
                   isSel
                     ? 'bg-primary text-primary-ink font-semibold'
                     : list.length
@@ -126,6 +126,7 @@ export default function CalendarPage() {
             });
           })()}
         </div>
+        </SwipePager>
         <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted">
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-str" /> Strength</span>
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-car" /> Cardio</span>

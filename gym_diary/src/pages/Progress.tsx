@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Drop, Fire, Trophy, CalendarCheck, ChartLineUp, Medal, Target, Scales, ArrowUpRight, ArrowDownRight } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
-import { Card, Chip, Empty, PageHeader, Progress as Bar, SectionTitle, Stat, inputCls } from '../components/ui';
+import { Card, Chip, Empty, PageHeader, Progress as Bar, SectionTitle, Stat, inputCls, HeaderActions } from '../components/ui';
 import { ChartCard, RankBars, TrendBars, TrendLine, WaterBars } from '../components/charts';
 import WaterRing from '../components/WaterRing';
 import CountUp from '../components/CountUp';
@@ -34,6 +34,8 @@ export default function Progress() {
   const [params, setParams] = useSearchParams();
   const tabParam = params.get('tab');
   const tab: Tab = tabParam === 'strength' || tabParam === 'cardio' ? tabParam : 'overview';
+  // Content slides in from the side of the tab you moved to.
+  const tabDir = useRef<1 | -1>(1);
 
   const usage = useMemo(() => exerciseUsage(sessions).sort((a, b) => b.count - a.count), [sessions]);
   const [exercise, setExercise] = useState<string>('');
@@ -68,7 +70,7 @@ export default function Progress() {
   if (!sessions.length && !measurements.length && !water.length)
     return (
       <div>
-        <PageHeader title="Progress" />
+        <PageHeader title="Progress" right={<HeaderActions />} />
         <Empty icon={<ChartLineUp size={32} weight="bold" />} title="No data yet">
           Log a few workouts and your trends, streaks and records will show up here.
         </Empty>
@@ -77,16 +79,25 @@ export default function Progress() {
 
   return (
     <div>
-      <PageHeader title="Progress" sub="Consistency, records and trends" />
+      <PageHeader title="Progress" sub="Consistency, records and trends" right={<HeaderActions />} />
 
-      <div className="sticky top-0 z-20 -mx-4 mb-4 flex gap-1 border-b border-line bg-bg/85 px-4 py-2 pt-safe backdrop-blur-md">
+      <div className="bar bar-top sticky top-0 z-20 -mx-4 mb-4 flex gap-1 px-4 py-2 pt-safe">
         {TABS.map((t) => (
-          <Chip key={t.id} active={tab === t.id} onClick={() => setParams(t.id === 'overview' ? {} : { tab: t.id }, { replace: true })} className="flex-1">
+          <Chip
+            key={t.id}
+            active={tab === t.id}
+            onClick={() => {
+              tabDir.current = TABS.findIndex((x) => x.id === t.id) >= TABS.findIndex((x) => x.id === tab) ? 1 : -1;
+              setParams(t.id === 'overview' ? {} : { tab: t.id }, { replace: true });
+            }}
+            className="flex-1"
+          >
             {t.label}
           </Chip>
         ))}
       </div>
 
+      <div key={tab} className="anim-tab" style={{ ['--dir' as string]: tabDir.current }}>
       {tab === 'overview' && (
         <>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -358,6 +369,7 @@ export default function Progress() {
       )}
         </>
       )}
+      </div>
     </div>
   );
 }

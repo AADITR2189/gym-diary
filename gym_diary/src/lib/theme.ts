@@ -10,6 +10,8 @@ export function resolveTheme(pref: ThemePref): ResolvedTheme {
   return pref;
 }
 
+let themeApplied = false;
+
 /** Sets <html data-theme> + browser chrome colour, and follows the OS when pref is "system". */
 export function applyTheme(pref: ThemePref) {
   try {
@@ -19,6 +21,13 @@ export function applyTheme(pref: ThemePref) {
   }
   const set = () => {
     const t = resolveTheme(pref);
+    // Ease light ↔ dark instead of an abrupt brightness jump (not on first load).
+    const root = document.documentElement;
+    if (themeApplied && root.dataset.theme !== t) {
+      root.classList.add('theme-fade');
+      window.setTimeout(() => root.classList.remove('theme-fade'), 350);
+    }
+    themeApplied = true;
     document.documentElement.dataset.theme = t;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', PALETTE[t].bg);
     window.dispatchEvent(new CustomEvent('themechange', { detail: t }));

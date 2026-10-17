@@ -4,6 +4,8 @@ const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: ['selector', '[data-theme="dark"]'],
+  // hover: styles only on devices that really hover, so a tapped button doesn't stay highlighted on phones.
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       colors: {
@@ -22,9 +24,10 @@ export default {
       },
       fontFamily: {
         // "Athletic" type: condensed display face for headings and numbers, Barlow for UI text.
-        sans: ['Barlow', '"Helvetica Neue"', 'system-ui', 'sans-serif'],
+        // UI text uses the phone's own font (SF Pro on iPhone, Roboto on Android) with its built-in optical sizing.
+        sans: ['system-ui', '-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', '"Segoe UI"', 'Roboto', 'sans-serif'],
         display: ['"Barlow Condensed"', '"Arial Narrow"', 'sans-serif'],
-        mono: ['"Geist Mono"', '"SF Mono"', 'ui-monospace', 'monospace'],
+        mono: ['ui-monospace', '"SF Mono"', 'Menlo', 'monospace'],
       },
       borderRadius: {
         card: '12px',

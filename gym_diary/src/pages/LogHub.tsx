@@ -8,7 +8,8 @@ import { formatLong, isValidKey, todayKey } from '../lib/date';
 import { TemplateCard, TemplateSheet } from '../components/TemplateViews';
 import { TEMPLATE_DEFS } from '../data/templateCatalog';
 import { buildTemplate, favoriteKey, prefsFrom, recommend, type CatalogTemplate } from '../lib/templates';
-import { deleteTemplate } from '../db/db';
+import { deleteTemplate, saveTemplate } from '../db/db';
+import { toast } from '../lib/dialog';
 import { readDraft, clearDraft } from './Editor';
 import type { MuscleGroup } from '../types';
 import { MUSCLE_GROUPS } from '../types';
@@ -84,7 +85,7 @@ export default function LogHub() {
                 clearDraft();
                 setDraft(null);
               }}
-              className="grid h-10 w-10 place-items-center text-muted"
+              className="hit-44 grid h-10 w-10 place-items-center text-muted"
               aria-label="Discard draft"
             >
               <Trash size={18} weight="bold" />
@@ -175,8 +176,11 @@ export default function LogHub() {
                   </span>
                 </Link>
                 <button
-                  onClick={() => confirm(`Delete template “${t.name}”?`) && deleteTemplate(t.id)}
-                  className="absolute right-1 top-1 grid h-8 w-8 place-items-center text-muted"
+                  onClick={async () => {
+                    await deleteTemplate(t.id);
+                    toast(`Template “${t.name}” deleted`, { undo: () => saveTemplate(t) });
+                  }}
+                  className="hit-44 absolute right-1 top-1 grid h-8 w-8 place-items-center text-muted"
                   aria-label={`Delete template ${t.name}`}
                 >
                   <Trash size={14} weight="bold" />

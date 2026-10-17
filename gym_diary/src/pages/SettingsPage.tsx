@@ -31,6 +31,7 @@ import {
   uid,
   wipeAll,
 } from '../db/db';
+import { choiceDialog, confirmDialog } from '../lib/dialog';
 import { csvToSessions, downloadText, sessionsToCsv } from '../lib/csv';
 import { addDays, todayKey } from '../lib/date';
 import { makeDemoSessions, makeDemoWater } from '../lib/demo';
@@ -89,11 +90,11 @@ export default function SettingsPage() {
     const existing = new Set(sessions.map((s) => s.id));
     const dupes = list.filter((s) => existing.has(s.id)).length;
     if (
-      !confirm(
-        `Import ${list.length} workouts?${dupes ? ` ${dupes} already exist and will be updated.` : ''}${
-          errors.length ? `\n\n${errors.length} warning(s):\n${errors.slice(0, 5).join('\n')}` : ''
-        }`,
-      )
+      !(await confirmDialog({
+        title: `Import ${list.length} workouts?`,
+        message: `${dupes ? `${dupes} already exist and will be updated.` : ''}${errors.length ? `\n\n${errors.length} warning(s):\n${errors.slice(0, 5).join('\n')}` : ''}`.trim() || undefined,
+        confirmLabel: 'Import',
+      }))
     )
       return;
     await putSessions(list);
@@ -104,9 +105,17 @@ export default function SettingsPage() {
     try {
       const b = JSON.parse(await file.text()) as BackupFile;
       if (b.app !== 'gym-diary' || !Array.isArray(b.sessions)) return flash('That is not a Gym Diary backup file.');
-      const replace = confirm(
-        `Backup from ${new Date(b.exportedAt).toLocaleString()} with ${b.sessions.length} workouts.\n\nOK = replace all current data\nCancel = merge into current data`,
-      );
+      const choice = await choiceDialog({
+        title: 'Restore backup?',
+        message: `Backup from ${new Date(b.exportedAt).toLocaleString()} with ${b.sessions.length} workouts.`,
+        actions: [
+          { label: 'Merge with my data', value: 'merge', style: 'primary' },
+          { label: 'Replace all my data', value: 'replace', style: 'danger' },
+          { label: 'Cancel', value: 'cancel', style: 'cancel' },
+        ],
+      });
+      if (!choice) return;
+      const replace = choice === 'replace';
       await importBackup(b, replace ? 'replace' : 'merge');
       flash(`Restored ${b.sessions.length} workouts (${replace ? 'replaced' : 'merged'}).`);
     } catch {
@@ -132,7 +141,7 @@ export default function SettingsPage() {
         >
           <ArrowLeft size={18} weight="bold" />
         </button>
-        <h1 className="h-title text-[38px]">Settings</h1>
+        <h1 className="h-title text-[2.375rem]">Settings</h1>
       </div>
 
       {msg && (
@@ -326,7 +335,7 @@ export default function SettingsPage() {
                 <span className="flex-1">
                   {e.name} <span className="text-xs text-muted">· {groupName(e.muscleGroup)}</span>
                 </span>
-                <button className="grid h-10 w-10 place-items-center text-muted" onClick={() => deleteCustomExercise(e.id)} aria-label={`Delete ${e.name}`}>
+                <button className="hit-44 grid h-10 w-10 place-items-center text-muted" onClick={() => deleteCustomExercise(e.id)} aria-label={`Delete ${e.name}`}>
                   <Trash size={16} weight="bold" />
                 </button>
               </div>
@@ -336,7 +345,7 @@ export default function SettingsPage() {
                 <span className="flex-1">
                   {c.name} <span className="text-xs text-muted">· {c.category ?? 'Cardio'}</span>
                 </span>
-                <button className="grid h-10 w-10 place-items-center text-muted" onClick={() => deleteCustomCardio(c.id)} aria-label={`Delete ${c.name}`}>
+                <button className="hit-44 grid h-10 w-10 place-items-center text-muted" onClick={() => deleteCustomCardio(c.id)} aria-label={`Delete ${c.name}`}>
                   <Trash size={16} weight="bold" />
                 </button>
               </div>
@@ -367,8 +376,13 @@ export default function SettingsPage() {
           variant="danger"
           className="w-full justify-start"
           onClick={async () => {
-            if (!confirm('Erase all workouts, water logs, profile, goals, templates and settings from this device?')) return;
-            if (!confirm('Really erase everything? Make a backup first if unsure.')) return;
+            const ok = await confirmDialog({
+              title: 'Erase all data?',
+              message: 'Every workout, water log, weigh-in, goal, template and setting on this phone will be deleted. This can’t be undone, so make a backup first if you are unsure.',
+              confirmLabel: 'Erase everything',
+              danger: true,
+            });
+            if (!ok) return;
             await wipeAll();
             flash('All data erased.');
           }}
@@ -376,7 +390,7 @@ export default function SettingsPage() {
           <Trash size={20} weight="bold" /> Erase all data
         </Button>
       </div>
-      <p className="mt-10 text-center font-mono text-[11px] text-muted">Gym Diary v2.0 · no account, no cloud, no tracking</p>
+      <p className="mt-10 text-center font-mono text-[0.6875rem] text-muted">Gym Diary v2.0 · no account, no cloud, no tracking</p>
     </div>
   );
 }
