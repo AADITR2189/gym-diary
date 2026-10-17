@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { MagnifyingGlass, ListChecks } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
-import { Chip, Empty, PageHeader, Stat, inputCls } from '../components/ui';
+import { Chip, Empty, PageHeader, Stat, inputCls, HeaderActions } from '../components/ui';
 import SessionCard from '../components/SessionCard';
 import { addDays, formatLong, startOfMonth, todayKey } from '../lib/date';
 import { fmtMinutes, fmtNum, inRange, summarize } from '../lib/stats';
@@ -64,7 +64,7 @@ export default function History() {
 
   return (
     <div>
-      <PageHeader title="History" sub={`${sessions.length} workouts logged`} />
+      <PageHeader title="History" sub={`${sessions.length} workouts logged`} right={<HeaderActions />} />
       <div className="relative">
         <MagnifyingGlass size={18} weight="bold" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search exercise, activity or notes" className={`${inputCls} pl-10`} />

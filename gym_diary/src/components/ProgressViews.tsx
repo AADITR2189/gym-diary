@@ -39,7 +39,7 @@ export function YearGrid() {
         <div className="inline-grid grid-flow-col gap-[3px]" style={{ gridTemplateRows: 'auto repeat(7, 12px)' }}>
           <div />
           {dayNames.map((n, i) => (
-            <div key={i} className="pr-1 font-mono text-[9px] leading-[12px] text-muted">
+            <div key={i} className="pr-1 font-mono text-[0.6875rem] leading-[12px] text-muted">
               {n}
             </div>
           ))}
@@ -47,7 +47,7 @@ export function YearGrid() {
             const first = fromKey(col[0].date);
             const newMonth = w === 0 || fromKey(weeks[w - 1][0].date).getMonth() !== first.getMonth();
             return [
-              <div key={`m${w}`} className="h-3 whitespace-nowrap font-mono text-[9px] leading-3 text-muted">
+              <div key={`m${w}`} className="h-3 whitespace-nowrap font-mono text-[0.6875rem] leading-3 text-muted">
                 {newMonth && w < weeks.length - 2 ? first.toLocaleDateString(undefined, { month: 'short' }) : ''}
               </div>,
               ...col.map((d) => {

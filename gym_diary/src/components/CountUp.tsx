@@ -1,9 +1,6 @@
-import { useCountUp, useInView } from '../lib/anim';
+import { useCountUp } from '../lib/anim';
 
-/**
- * Number that counts up to its value once it scrolls into view;
- * `format` turns the in-between number into text.
- */
+/** Number that animates from its old value to the new one when it changes; `format` turns it into text. */
 export default function CountUp({
   value,
   format = (n) => Math.round(n).toLocaleString(),
@@ -13,11 +10,6 @@ export default function CountUp({
   format?: (n: number) => string;
   duration?: number;
 }) {
-  const [ref, inView] = useInView<HTMLSpanElement>();
-  const n = useCountUp(inView ? value : 0, duration);
-  return (
-    <span ref={ref} className="num">
-      {format(n)}
-    </span>
-  );
+  const n = useCountUp(value, duration);
+  return <span className="num">{format(n)}</span>;
 }

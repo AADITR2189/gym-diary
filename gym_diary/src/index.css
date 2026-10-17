@@ -56,17 +56,18 @@ html,
 body {
   background: rgb(var(--bg));
   color: rgb(var(--ink));
-  overscroll-behavior-y: none;
+  /* "contain" keeps the native edge bounce/glow but stops pull-to-refresh from reloading mid-workout. */
+  overscroll-behavior-y: contain;
   -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  line-height: 1.6;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   font-feature-settings: 'tnum' 0;
 }
 
-/* Soft ambient light so the canvas never feels flat. Fixed, non-interactive. */
+/* Soft ambient light so the canvas never feels flat. Static: a moving full-screen background distracts. */
 body::before {
   content: '';
   position: fixed;
@@ -76,28 +77,53 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background: radial-gradient(closest-side, rgb(var(--gold) / 0.05), transparent);
-  animation: drift 28s ease-in-out infinite alternate;
 }
 #root {
   position: relative;
   z-index: 1;
 }
-@keyframes drift {
-  to {
-    transform: translate3d(-18vw, 22vh, 0);
-  }
+
+/* Press feedback on touch-down for every button and link (the tap highlight is turned off above).
+   :where() keeps this weaker than any component's own active style. */
+:where(button, a, [role='button']):not(:disabled):active {
+  transform: scale(0.97);
+  transition: transform 80ms ease-out;
+}
+:where(button, a, [role='button']) {
+  transition: transform 160ms ease-out;
+  touch-action: manipulation;
+}
+
+/* Keyboard focus is always visible. */
+:is(button, a, [role='button'], summary):focus-visible,
+:is(input, textarea, select):focus-visible {
+  outline: 2px solid rgb(var(--ink)) !important;
+  outline-offset: 2px;
+}
+
+/* Easing between light and dark instead of an instant flash (class set briefly by lib/theme.ts). */
+html.theme-fade,
+html.theme-fade * {
+  transition:
+    background-color 300ms ease,
+    color 300ms ease,
+    border-color 300ms ease,
+    fill 300ms ease,
+    stroke 300ms ease !important;
 }
 
 @layer components {
+  /* Display type tightens as it grows (negative tracking), like Apple's optical tracking tables. */
   .h-display {
-    @apply font-display font-bold tracking-[0.005em] leading-[1.05];
+    @apply font-display font-bold leading-[1.05] tracking-[-0.01em];
   }
-  /* Headings get the scoreboard look: condensed, bold, uppercase. */
+  /* Headings: condensed and bold, in normal case so they read at a glance. */
   .h-title {
-    @apply h-display uppercase;
+    @apply h-display;
   }
+  /* Small section labels: sentence case, semibold, a hair of positive tracking for legibility. */
   .eyebrow {
-    @apply font-mono text-[11px] uppercase tracking-[0.08em] text-muted;
+    @apply text-[0.8125rem] font-semibold leading-snug tracking-[0.01em] text-muted;
   }
   .num {
     font-variant-numeric: tabular-nums;
@@ -111,6 +137,19 @@ body::before {
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }
+  /* Grows a small control's touch area to at least 44×44 px without changing how it looks. */
+  .hit-44:not(.absolute):not(.fixed) {
+    position: relative;
+  }
+  .hit-44::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
   .no-scrollbar {
     scrollbar-width: none;
   }
@@ -119,14 +158,111 @@ body::before {
   }
 }
 
-/* Scroll-entry reveal (see lib/reveal.ts) */
+/* Scroll-entry reveal (see lib/reveal.ts). Short and subtle so data is readable straight away. */
 .reveal {
   opacity: 0;
-  transform: translateY(12px);
+  transform: translateY(6px);
   transition:
-    opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 200ms ease;
+}
+
+/* ---------- Materials ---------- */
+
+/* Translucent layer for sheets, dialogs and toasts: content stays faintly visible underneath. */
+.material {
+  background: rgb(var(--surface) / 0.86);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 -8px 32px rgb(0 0 0 / 0.18);
+}
+/* Floating bars (bottom menu, sticky headers). */
+.bar {
+  background: rgb(var(--bg) / 0.78);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+}
+/* Scroll edge effect instead of a hard 1px divider: a soft fade where content slides under the bar. */
+.bar-top {
+  position: relative;
+}
+.bar-top::after,
+.bar-bottom::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 14px;
+  pointer-events: none;
+}
+.bar-top::after {
+  top: 100%;
+  background: linear-gradient(rgb(var(--bg) / 0.7), rgb(var(--bg) / 0));
+}
+.bar-bottom::before {
+  bottom: 100%;
+  background: linear-gradient(rgb(var(--bg) / 0), rgb(var(--bg) / 0.7));
+}
+/* Dimming scrim behind modal sheets and dialogs. */
+.scrim {
+  background: rgb(0 0 0 / 0.38);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+/* Fade the top of a scrolling sheet body instead of a divider. */
+.edge-fade {
+  -webkit-mask-image: linear-gradient(transparent, #000 10px);
+  mask-image: linear-gradient(transparent, #000 10px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .material {
+    background: rgb(var(--surface));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .bar {
+    background: rgb(var(--bg));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .scrim {
+    background: rgb(0 0 0 / 0.55);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root,
+  [data-theme='light'] {
+    --line: 74 103 99;
+    --muted: 30 60 56;
+  }
+  [data-theme='dark'] {
+    --line: 120 150 170;
+    --muted: 235 234 190;
+  }
+  .material,
+  .bar {
+    background: rgb(var(--surface));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-color: rgb(var(--ink) / 0.6);
+  }
+  .bar-top::after,
+  .bar-bottom::before {
+    display: none;
+  }
+  .bar-top {
+    border-bottom: 1px solid rgb(var(--ink) / 0.6);
+  }
+  .bar-bottom {
+    border-top: 1px solid rgb(var(--ink) / 0.6);
+  }
 }
 .reveal.is-in {
   opacity: 1;
@@ -135,7 +271,8 @@ body::before {
 /* Water ring wave: one wave period = 25% of the path's width, so the loop is seamless. */
 .wave {
   transform-box: fill-box;
-  animation: wave 3.2s linear infinite;
+  /* A few gentle passes when the ring appears, then still. Endless loops wear on the eye. */
+  animation: wave 3.2s linear 3;
 }
 @keyframes wave {
   to {
@@ -171,20 +308,17 @@ body::before {
   }
 }
 
-/* Badge / icon pop. */
+/* Badge / icon appear: critically damped, no overshoot (bounce is kept for things you flick). */
 .anim-pop {
-  animation: pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: pop 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 @keyframes pop {
   0% {
     opacity: 0;
-    transform: scale(0.5);
-  }
-  70% {
-    opacity: 1;
-    transform: scale(1.08);
+    transform: scale(0.85);
   }
   100% {
+    opacity: 1;
     transform: scale(1);
   }
 }
@@ -226,7 +360,7 @@ body::before {
 /* Gentle flame flicker while a streak is alive. */
 .anim-flicker {
   transform-origin: 50% 90%;
-  animation: flicker 1.6s ease-in-out infinite;
+  animation: flicker 1.6s ease-in-out 2;
 }
 @keyframes flicker {
   0%,
@@ -244,14 +378,25 @@ body::before {
   }
 }
 
-/* Calendar: workout days fade/pop in one after another (delay set inline). */
-.anim-day {
-  animation: day-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+/* Tab content: slides a little in the direction you moved (set by the --dir variable). */
+.anim-tab {
+  animation: tab-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-@keyframes day-in {
+@keyframes tab-in {
   from {
     opacity: 0;
-    transform: scale(0.7);
+    transform: translate3d(calc(var(--dir, 1) * 24px), 0, 0);
+  }
+}
+
+/* Leaving: the reverse of slide-in, along the same path. */
+.anim-slide-out {
+  animation: slide-out 200ms cubic-bezier(0.7, 0, 0.84, 0) both;
+}
+@keyframes slide-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
   }
 }
 
@@ -271,10 +416,21 @@ body::before {
   .anim-set-done,
   .anim-pop,
   .anim-flicker,
-  .anim-day,
   .anim-fade,
   .sparkle {
     animation: none;
+  }
+  /* Reduced motion keeps a soft cross-fade instead of movement. */
+  .anim-tab,
+  .anim-slide-out {
+    animation-name: fade;
+    animation-duration: 180ms;
+  }
+  .anim-slide-out {
+    animation-direction: reverse;
+  }
+  .motion-ring {
+    transition: none !important;
   }
   .sparkle {
     display: none;
@@ -287,9 +443,6 @@ body::before {
     opacity: 1;
     transform: none;
     transition: none;
-  }
-  body::before {
-    animation: none;
   }
 }
 

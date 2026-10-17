@@ -5,6 +5,7 @@ import { useData } from '../hooks/useData';
 import { Button, Card, Empty, Field, NumberInput, Progress, SectionTitle, Sheet, Tag, inputCls } from '../components/ui';
 import type { FitnessGoal, GoalType } from '../types';
 import { deleteGoal, saveGoal, uid } from '../db/db';
+import { toast } from '../lib/dialog';
 import { GOAL_TYPES, goalProgress, overallGoalCompletion } from '../lib/goals';
 import { currentWeight } from '../lib/body';
 import { formatShort, todayKey } from '../lib/date';
@@ -43,7 +44,7 @@ export default function GoalsPage() {
         >
           <ArrowLeft size={18} weight="bold" />
         </button>
-        <h1 className="h-title flex-1 text-[38px]">Goals</h1>
+        <h1 className="h-title flex-1 text-[2.375rem]">Goals</h1>
         <Button variant="primary" onClick={() => setOpen(true)}>
           <Plus size={16} weight="bold" /> New goal
         </Button>
@@ -80,7 +81,7 @@ export default function GoalsPage() {
                     {p.done && <Tag tone="str">Achieved</Tag>}
                   </div>
                 </div>
-                <button onClick={() => saveGoal({ ...g, archived: true })} className="grid h-9 w-9 place-items-center text-muted" aria-label="Archive goal">
+                <button onClick={() => saveGoal({ ...g, archived: true })} className="hit-44 grid h-9 w-9 place-items-center text-muted" aria-label="Archive goal">
                   <Archive size={16} weight="bold" />
                 </button>
               </div>
@@ -112,7 +113,14 @@ export default function GoalsPage() {
                   <button onClick={() => saveGoal({ ...g, archived: false })} className="text-sm text-muted underline-offset-4 hover:underline">
                     Restore
                   </button>
-                  <button onClick={() => confirm('Delete this goal?') && deleteGoal(g.id)} className="grid h-9 w-9 place-items-center text-muted" aria-label="Delete goal">
+                  <button
+                    onClick={async () => {
+                      await deleteGoal(g.id);
+                      toast('Goal deleted', { undo: () => saveGoal(g) });
+                    }}
+                    className="hit-44 grid h-9 w-9 place-items-center text-muted"
+                    aria-label="Delete goal"
+                  >
                     <Trash size={16} weight="bold" />
                   </button>
                 </li>

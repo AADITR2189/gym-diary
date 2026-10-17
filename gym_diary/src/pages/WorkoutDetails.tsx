@@ -114,7 +114,7 @@ export default function WorkoutDetails() {
                   <RegionInfo stat={stats.find((x) => x.region === selected)} unit={unit} format={fmtSets} />
                 </div>
                 <MuscleList stats={stats} mode="mono" unit={unit} format={fmtSets} selected={selected} onSelect={(r) => setSelected((x) => (x === r ? null : r))} />
-                {bySets && <p className="mt-2 px-2 text-[11px] text-muted">No weights logged, so this counts sets (helper muscles count as half).</p>}
+                {bySets && <p className="mt-2 px-2 text-[0.6875rem] text-muted">No weights logged, so this counts sets (helper muscles count as half).</p>}
               </div>
             </div>
           </Card>
@@ -177,7 +177,7 @@ function ExerciseRow({ e, unit, pr }: { e: StrengthEntry; unit: string; pr: bool
           <div className="flex items-center gap-2">
             <span className="truncate font-medium">{e.exercise}</span>
             {pr && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gold-soft px-2 py-0.5 text-[10px] font-medium uppercase text-gold">
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gold-soft px-2 py-0.5 text-[0.6875rem] font-semibold text-gold">
                 <Trophy size={11} weight="fill" /> PR
               </span>
             )}

@@ -1,18 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer } from '@phosphor-icons/react';
+import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer, DotsSixVertical } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { Button, Card, Field, IconBadge, NumberInput, Tag, inputCls } from '../components/ui';
 import { ExercisePicker, CardioPicker, ExerciseAutocomplete } from '../components/ExercisePicker';
 import type { CardioEntry, Level, MuscleGroup, Session, SessionKind, SetEntry, SetType, StrengthEntry, Template } from '../types';
 import { LEVEL_RULES, prefsFrom, resolveTemplate } from '../lib/templates';
 import { deleteSession, saveSession, saveTemplate, uid } from '../db/db';
+import { promptDialog, toast } from '../lib/dialog';
 import { formatLong, isValidKey, todayKey } from '../lib/date';
 import { entryVolume, fmtNum, fmtSec, fmtSet, isWorkSet, lastEntryFor, lastSetsFor, personalRecords, sessionCardioMin, sessionVolume, fmtMinutes, setLabels } from '../lib/stats';
 import { bodyWeightFor } from '../lib/heatmap';
+import { haptic, sound } from '../lib/feedback';
+import { spring } from '../lib/spring';
+
 import { currentWeight } from '../lib/body';
 import { bodyShare, bwPerRep, isBodyweightByDefault, isTimedByDefault, repRange, suggestNext, usesBarbell, type Suggestion } from '../lib/training';
-import { PlateSheet, RestTimerBar, SetTypeSheet, beep, primeSound, savedRestSec, setTypeTone, type RestRun } from '../components/WorkoutTools';
+import { PlateSheet, RestTimerSlot, SetTypeSheet, primeSound, savedRestSec, setTypeTone, type RestRun } from '../components/WorkoutTools';
 import CountUp from '../components/CountUp';
 import { useFlash } from '../lib/anim';
 import type { PersonalRecord } from '../types';
@@ -57,6 +61,23 @@ export default function Editor() {
   const [error, setError] = useState('');
   const [celebrate, setCelebrate] = useState<Celebration | null>(null);
   const [rest, setRest] = useState<RestRun | null>(null);
+  const [reorder, setReorder] = useState<{ id: string; from: number; target: number; dy: number; height: number } | null>(null);
+  const itemRefs = useRef(new Map<string, HTMLDivElement>());
+  const settle = useRef<{ id: string; y: number } | null>(null);
+  // After a reorder, spring the dropped card from where the finger left it into its slot.
+  useLayoutEffect(() => {
+    const st = settle.current;
+    if (!st) return;
+    settle.current = null;
+    const el = itemRefs.current.get(st.id);
+    if (!el || Math.abs(st.y) < 1) return;
+    el.style.transform = `translate3d(0, ${st.y}px, 0)`;
+    spring(st.y, 0, {
+      damping: 0.8,
+      response: 0.3,
+      onUpdate: (v) => (el.style.transform = v ? `translate3d(0, ${v}px, 0)` : ''),
+    });
+  });
   const [plates, setPlates] = useState<number | null>(null);
   const initialised = useRef(false);
   /** Ids present when the editor opened; anything else was added now and slides in. */
@@ -188,6 +209,7 @@ export default function Editor() {
     updEntry(entryId, (x) => ({ ...x, sets: x.sets.map((st, j) => (j === i ? { ...st, ...patch, done } : st)) }));
     if (!done) return;
     primeSound();
+    haptic('light');
     const nextInGroup = e.superset && s.strength[idx + 1]?.superset === e.superset ? s.strength[idx + 1] : null;
     if (nextInGroup) {
       setRest(null);
@@ -202,6 +224,85 @@ export default function Editor() {
     else next = 'Last set done. Save your workout when you are ready.';
     const total = savedRestSec() ?? LEVEL_RULES[prefs.level].restSec;
     setRest({ total, endAt: Date.now() + total * 1000, next });
+  }
+
+  /**
+   * Drag-to-reorder: the picked-up card follows the finger 1:1 while the others slide out of its way.
+   * On release the order is saved and the card springs the last few pixels into its new slot.
+   */
+  function startReorder(ev: React.PointerEvent, from: number) {
+    if (!s) return;
+    ev.preventDefault();
+    const ids = s.strength.map((x) => x.id);
+    const rects = ids.map((id) => itemRefs.current.get(id)!.getBoundingClientRect());
+    const gap = rects.length > 1 ? Math.max(0, rects[1].top - rects[0].bottom) : 12;
+    const y0 = ev.clientY;
+    const scroll0 = window.scrollY;
+    let target = from;
+    let dy = 0;
+    let raf = 0;
+    haptic('light');
+    const centre = (i: number) => rects[i].top + rects[i].height / 2;
+    const update = (clientY: number) => {
+      dy = clientY - y0 + (window.scrollY - scroll0);
+      const c = centre(from) + dy;
+      let t = 0;
+      for (let i = 0; i < rects.length; i++) if (i !== from && centre(i) < c) t++;
+      if (t !== target) haptic('light');
+      target = t;
+      setReorder({ id: ids[from], from, target, dy, height: rects[from].height + gap });
+    };
+    let lastY = y0;
+    const autoScroll = () => {
+      // Scroll only once the card is actually being moved and the finger reaches the top edge
+      // or the save bar at the bottom.
+      const movedEnough = Math.abs(lastY - y0) > 10;
+      const speed = !movedEnough ? 0 : lastY > window.innerHeight - 150 ? 10 : lastY < 80 ? -10 : 0;
+      if (speed) {
+        window.scrollBy(0, speed);
+        update(lastY);
+      }
+      raf = requestAnimationFrame(autoScroll);
+    };
+    raf = requestAnimationFrame(autoScroll);
+    const move = (e: PointerEvent) => {
+      lastY = e.clientY;
+      update(e.clientY);
+    };
+    const up = () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      // Where the card is drawn now vs. where its new slot is: spring the difference away.
+      const h = rects[from].height;
+      const newTop = target > from ? rects[target].bottom - h : target < from ? rects[target].top : rects[from].top;
+      settle.current = { id: ids[from], y: rects[from].top + dy - newTop };
+      setReorder(null);
+      if (target !== from)
+        setS((prev) => {
+          if (!prev) return prev;
+          const list = [...prev.strength];
+          const [item] = list.splice(from, 1);
+          list.splice(target, 0, item);
+          return { ...prev, strength: normaliseSupersets(list) };
+        });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    setReorder({ id: ids[from], from, target, dy: 0, height: rects[from].height + gap });
+  }
+
+  function reorderStyle(id: string, idx: number): React.CSSProperties | undefined {
+    if (!reorder) return undefined;
+    if (id === reorder.id)
+      return { transform: `translate3d(0, ${reorder.dy}px, 0) scale(1.02)`, zIndex: 20, filter: 'drop-shadow(0 12px 24px rgb(0 0 0 / 0.25))' };
+    const { from, target, height } = reorder;
+    let shift = 0;
+    if (from < target && idx > from && idx <= target) shift = -height;
+    if (target < from && idx >= target && idx < from) shift = height;
+    return { transform: shift ? `translate3d(0, ${shift}px, 0)` : undefined, transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1)' };
   }
 
   /** Link an exercise with the next one into a superset, or split them apart. */
@@ -256,32 +357,66 @@ export default function Editor() {
       .map((e) => ({ e, best: newPrLabel(e, prevBest.get(e.exercise), settings.weightUnit) }))
       .filter((x) => x.best)
       .map((x) => `${x.e.exercise}: ${x.best}`);
-    setCelebrate({
+    const c: Celebration = {
       kind: clean.kind,
       sets: clean.strength.reduce((a, e) => a + e.sets.filter(isWorkSet).length, 0),
       volume: sessionVolume(clean),
       minutes: clean.kind === 'cardio' ? sessionCardioMin(clean) : clean.durationMin ?? 0,
       prs,
-    });
+    };
+    // Sound and haptic on the same frame as the confirmation appears.
+    sound(prs.length ? 'record' : 'success');
+    haptic('success');
+    // A new record or a cardio block to continue to gets the full screen, which waits for you.
+    // Otherwise a short message confirms the save and you're straight back where you came from.
+    if (prs.length || (nextCardio && isNew && !isCardio)) {
+      setCelebrate(c);
+      return;
+    }
+    goBack();
+    toast(
+      c.kind === 'cardio'
+        ? `Workout saved · ${fmtMinutes(c.minutes)} of cardio`
+        : `Workout saved · ${c.sets} sets · ${fmtNum(Math.round(c.volume))} ${settings.weightUnit}`,
+    );
   }
 
+  // Deleting and discarding happen straight away, with Undo instead of an "Are you sure?".
   async function onDelete() {
     if (!s) return;
-    if (!confirm('Delete this workout? This cannot be undone.')) return;
+    const saved = sessions.find((x) => x.id === s.id);
     await deleteSession(s.id);
     goBack();
+    if (saved) toast('Workout deleted', { undo: () => saveSession(saved) });
   }
 
   function onDiscard() {
-    if ((s?.strength.length || s?.cardio.length) && !confirm('Discard this unsaved workout?')) return;
+    const draft = s;
     clearDraft();
     goBack();
+    if (draft && (draft.strength.length || draft.cardio.length))
+      toast('Workout discarded', {
+        undo: () => {
+          try {
+            localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+          } catch {
+            /* storage unavailable */
+          }
+          window.location.hash = '#/log/edit?resume=1';
+        },
+      });
   }
 
   async function onSaveTemplate() {
     if (!s) return;
-    const name = prompt('Template name', s.name || (isCardio ? 'My Cardio' : 'My Workout'));
-    if (!name?.trim()) return;
+    const name = await promptDialog({
+      title: 'Save as template',
+      message: 'Start this workout again in one tap from the Log screen.',
+      label: 'Template name',
+      initial: s.name || (isCardio ? 'My Cardio' : 'My Workout'),
+      confirmLabel: 'Save',
+    });
+    if (!name) return;
     await saveTemplate({
       id: uid(),
       name: name.trim(),
@@ -289,12 +424,12 @@ export default function Editor() {
       strength: s.strength.map((e) => ({ exercise: e.exercise, muscleGroup: e.muscleGroup, sets: Math.max(1, e.sets.length) })),
       cardio: s.cardio.map((c) => ({ activity: c.activity, durationMin: c.durationMin || 30 })),
     });
-    alert(`Saved template “${name.trim()}”. You'll find it on the Log screen.`);
+    toast(`Template “${name.trim()}” saved to the Log screen`);
   }
 
   return (
     <div className={rest ? 'pb-64' : 'pb-44'}>
-      <div className="sticky top-0 z-30 -mx-4 flex items-center gap-1 border-b border-line bg-bg/85 px-2 pt-safe backdrop-blur-md">
+      <div className="bar bar-top sticky top-0 z-30 -mx-4 flex items-center gap-1 px-2 pt-safe">
         <button onClick={isNew ? onDiscard : goBack} className="grid h-12 w-12 place-items-center" aria-label="Back">
           <ArrowLeft size={20} weight="bold" />
         </button>
@@ -359,8 +494,17 @@ export default function Editor() {
             const next = s.strength[idx + 1];
             const linked = !!e.superset && next?.superset === e.superset;
             return (
-              <div key={e.id}>
+              <div
+                key={e.id}
+                ref={(el) => {
+                  if (el) itemRefs.current.set(e.id, el);
+                  else itemRefs.current.delete(e.id);
+                }}
+                className="relative"
+                style={reorderStyle(e.id, idx)}
+              >
                 <StrengthCard
+                  onDragStart={s.strength.length > 1 ? (ev) => startReorder(ev, idx) : undefined}
                   added={isAdded(e.id)}
                   prev={prevBest.get(e.exercise)}
                   e={e}
@@ -381,7 +525,7 @@ export default function Editor() {
                   <div className={`flex justify-center ${linked ? '-my-1' : 'mt-1'}`}>
                     <button
                       onClick={() => toggleLink(idx)}
-                      className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ${
+                      className={`hit-44 inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ${
                         linked ? 'border border-car/30 bg-car-soft text-car' : 'text-muted hover:bg-raised'
                       }`}
                       aria-label={linked ? `Split ${e.exercise} and ${next.exercise}` : `Superset ${e.exercise} with ${next.exercise}`}
@@ -413,7 +557,7 @@ export default function Editor() {
                 </div>
                 <button
                   onClick={() => update({ cardio: s.cardio.filter((x) => x.id !== c.id) })}
-                  className="grid h-10 w-10 place-items-center text-muted"
+                  className="hit-44 grid h-10 w-10 place-items-center text-muted"
                   aria-label="Remove activity"
                 >
                   <Trash size={18} weight="bold" />
@@ -463,9 +607,9 @@ export default function Editor() {
       />
 
       {/* Sticky save bar */}
-      <div className="fixed inset-x-0 bottom-16 z-30 border-t border-line bg-bg/90 px-4 py-3 backdrop-blur-md">
+      <div className="bar bar-bottom fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 px-4 py-3">
         <div className="mx-auto max-w-lg">
-          {rest && !isCardio && <RestTimerBar run={rest} onChange={setRest} onStop={() => setRest(null)} />}
+          {!isCardio && <RestTimerSlot run={rest} onChange={setRest} onStop={() => setRest(null)} />}
           {error && <div className="mb-2 text-sm text-danger">{error}</div>}
           <div className="flex items-center gap-3">
             <div className="num min-w-0 flex-1 text-sm text-muted">
@@ -546,6 +690,7 @@ function StrengthCard({
   onRemove,
   onDone,
   onPlates,
+  onDragStart,
   suggestion,
   group,
   added,
@@ -567,6 +712,8 @@ function StrengthCard({
   onRemove: () => void;
   onDone: (i: number, patch?: Partial<SetEntry>) => void;
   onPlates?: (weight: number) => void;
+  /** Press-and-drag the grip to reorder exercises. */
+  onDragStart?: (e: React.PointerEvent) => void;
   /** Body weight counted per rep if body-weight mode were switched on now. */
   bwNow: number;
   bodyWeight: number;
@@ -619,12 +766,8 @@ function StrengthCard({
   };
   useEffect(() => {
     if (run && run.target > 0 && elapsed >= run.target) {
-      beep();
-      try {
-        navigator.vibrate?.([300, 100, 300]);
-      } catch {
-        /* not supported */
-      }
+      sound('rest');
+      haptic('warning');
       finishRun(run.target);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -642,6 +785,16 @@ function StrengthCard({
   return (
     <Card className={`p-4 ${added ? 'anim-slide-in' : ''} ${group ? 'border-l-4 border-l-car' : ''}`}>
       <div className="flex items-start gap-3">
+        {onDragStart && (
+          <button
+            onPointerDown={onDragStart}
+            className="hit-44 -ml-2 -mr-1 grid h-8 w-6 shrink-0 cursor-grab touch-none place-items-center text-muted active:cursor-grabbing"
+            aria-label={`Drag to reorder ${e.exercise}`}
+            title="Drag to reorder"
+          >
+            <DotsSixVertical size={18} weight="bold" />
+          </button>
+        )}
         <IconBadge tone={group ? 'car' : 'str'} size="sm">
           <span className="num text-sm font-semibold">{group ?? idx + 1}</span>
         </IconBadge>
@@ -654,14 +807,14 @@ function StrengthCard({
           </div>
         </div>
         {onPlates && !timed && (
-          <button onClick={() => onPlates(topWeight)} className="grid h-9 w-9 place-items-center text-muted" aria-label="Plate calculator" title="Plate calculator">
+          <button onClick={() => onPlates(topWeight)} className="hit-44 grid h-9 w-9 place-items-center text-muted" aria-label="Plate calculator" title="Plate calculator">
             <Calculator size={18} weight="bold" />
           </button>
         )}
-        <button onClick={() => setShowNotes(!showNotes)} className="grid h-9 w-9 place-items-center text-muted" aria-label="Exercise notes">
+        <button onClick={() => setShowNotes(!showNotes)} className="hit-44 grid h-9 w-9 place-items-center text-muted" aria-label="Exercise notes">
           <NotePencil size={18} weight="bold" />
         </button>
-        <button onClick={onRemove} className="grid h-9 w-9 place-items-center text-muted" aria-label="Remove exercise">
+        <button onClick={onRemove} className="hit-44 grid h-9 w-9 place-items-center text-muted" aria-label="Remove exercise">
           <Trash size={18} weight="bold" />
         </button>
       </div>
@@ -697,7 +850,7 @@ function StrengthCard({
         </div>
       )}
       {lastSets && (
-        <div className="mt-2 flex items-center gap-1.5 font-mono text-[11px] text-muted">
+        <div className="mt-2 flex items-center gap-1.5 font-mono text-[0.6875rem] text-muted">
           <ClockCounterClockwise size={12} weight="bold" /> Last time: {lastSets.map((x) => `${x.type === 'warmup' ? 'W ' : ''}${fmtSet(x, e)}`).join(', ')}
         </div>
       )}
@@ -782,7 +935,7 @@ function StrengthCard({
         {last ? <CopySimple size={16} weight="bold" /> : <Plus size={16} weight="bold" />} Add set{' '}
         {last && <span className="num text-muted">({fmtSet(last, e)})</span>}
       </Button>
-      <p className="mt-2 text-center text-[11px] text-muted">
+      <p className="mt-2 text-center text-[0.6875rem] text-muted">
         {timed ? 'Tap ▶ to start the hold timer; it beeps at the target time. Tap ■ to stop early. ' : ''}Tap a set number to make it a warm-up, drop set or set to
         failure.
       </p>
@@ -818,7 +971,7 @@ function ModeToggle({ on, onClick, icon, children }: { on: boolean; onClick: () 
     <button
       onClick={onClick}
       aria-pressed={on}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors ${
+      className={`hit-44 inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors ${
         on ? 'border-str/40 bg-str-soft text-str' : 'border-line bg-bg text-muted'
       }`}
     >
@@ -894,7 +1047,7 @@ function TimedSetRow({
     <div className={`grid grid-cols-[2.5rem_1fr_1fr_2.75rem] items-center gap-2 rounded-btn ${added ? 'anim-slide-in' : ''} ${flash ? 'anim-set-done' : ''}`}>
       <button
         onClick={onType}
-        className={`num mx-auto grid h-9 w-9 place-items-center rounded-full font-semibold ${setTypeTone(type)}`}
+        className={`hit-44 num mx-auto grid h-9 w-9 place-items-center rounded-full font-semibold ${setTypeTone(type)}`}
         aria-label={`Set ${label}: change set type or delete`}
       >
         {label}
@@ -980,7 +1133,7 @@ function SetRow({
     <div className={`grid grid-cols-[2.5rem_1fr_1fr_2.75rem] items-center gap-2 rounded-btn ${added ? 'anim-slide-in' : ''} ${flash ? 'anim-set-done' : ''}`}>
       <button
         onClick={onType}
-        className={`num mx-auto grid h-9 w-9 place-items-center rounded-full font-semibold ${setTypeTone(type)}`}
+        className={`hit-44 num mx-auto grid h-9 w-9 place-items-center rounded-full font-semibold ${setTypeTone(type)}`}
         aria-label={`Set ${label}: change set type or delete`}
       >
         {label}
@@ -1015,13 +1168,7 @@ function SavedOverlay({ c, unit, onDone, next }: { c: Celebration; unit: string;
     doneRef.current = true;
     onDone();
   };
-  useEffect(() => {
-    // With a cardio block to follow, wait for the user to choose.
-    if (next) return;
-    const t = window.setTimeout(finish, c.prs.length ? 2600 : 1700);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // No timer: the screen stays until you tap, so it never moves you on before you've read it.
   const sparks = Array.from({ length: 14 }, (_, i) => {
     const a = (i / 14) * Math.PI * 2;
     const d = 46 + (i % 3) * 14;
@@ -1105,7 +1252,9 @@ function SavedOverlay({ c, unit, onDone, next }: { c: Celebration; unit: string;
             <div className="text-xs text-muted">or tap anywhere to finish</div>
           </div>
         ) : (
-          <div className="mt-5 text-xs text-muted">Tap anywhere to continue</div>
+          <Button variant="primary" className="mt-5 w-full" onClick={finish}>
+            Done
+          </Button>
         )}
       </div>
     </div>

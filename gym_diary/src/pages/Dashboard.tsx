@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { MuscleHeatCard } from '../components/HeatMapViews';
 import { Link } from 'react-router-dom';
-import { GearSix, UserCircle, CheckCircle, Circle, Barbell, Plus, Target, Drop, CaretRight, Fire, ChartLineUp } from '@phosphor-icons/react';
+import { CheckCircle, Circle, Barbell, Plus, Target, Drop, CaretRight, Fire, ChartLineUp } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
-import { Card, Empty, IconButton, PageHeader, Progress, SectionTitle, Stat } from '../components/ui';
+import { Card, Empty, HeaderActions, PageHeader, Progress, SectionTitle, Stat } from '../components/ui';
 import SessionCard from '../components/SessionCard';
 import { fmtMinutes, fmtNum, inRange, streaks, summarize } from '../lib/stats';
 import { formatLong, startOfMonth, startOfWeek, todayKey } from '../lib/date';
@@ -57,16 +57,7 @@ export default function Dashboard() {
       <PageHeader
         sub={formatLong(today)}
         title={profile?.name ? `${greeting()}, ${profile.name.split(' ')[0]}` : 'Gym Diary'}
-        right={
-          <>
-            <IconButton label="Profile" to="/profile">
-              <UserCircle size={20} weight="bold" />
-            </IconButton>
-            <IconButton label="Settings and data" to="/settings">
-              <GearSix size={20} weight="bold" />
-            </IconButton>
-          </>
-        }
+        right={<HeaderActions />}
       />
 
       {/* Today */}
@@ -226,7 +217,7 @@ function Mini({ label, value, sub, tone = 'text-ink' }: { label: string; value: 
   return (
     <div className="min-w-0">
       <div className="text-xs text-muted">{label}</div>
-      <div className={`h-display truncate text-[28px] ${tone}`}>{value}</div>
+      <div className={`h-display truncate text-[1.75rem] ${tone}`}>{value}</div>
       {sub && <div className="truncate text-xs text-muted">{sub}</div>}
     </div>
   );
@@ -280,7 +271,7 @@ function WeekRingCard({ done, target, hasGoal }: { done: number; target: number;
       <div className="flex items-center gap-4">
         <GoalRing pct={pct} size={96} tone={met ? 'gold' : 'str'} label={`${done} of ${target} workouts this week`}>
           <div className="leading-none">
-            <div className="h-display text-[26px]">
+            <div className="h-display text-[1.625rem]">
               <CountUp value={done} />
               <span className="text-base text-muted">/{target}</span>
             </div>

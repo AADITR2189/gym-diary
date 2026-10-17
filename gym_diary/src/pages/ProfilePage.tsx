@@ -6,6 +6,8 @@ import { Button, Card, Field, NumberInput, SectionTitle, Stat, Tag, inputCls } f
 import { ChartCard, TrendLine } from '../components/charts';
 import { ACTIVITY_LEVELS, FITNESS_GOALS, GENDERS, type ActivityLevel, type FitnessGoalFocus, type Gender, type Profile } from '../types';
 import { deleteMeasurement, saveMeasurement, saveProfile, uid } from '../db/db';
+import { toast } from '../lib/dialog';
+import SwipeRow from '../components/SwipeRow';
 import { bmi, bmiLabel, currentWeight, dailyCalories, weightChange } from '../lib/body';
 import { formatShort, todayKey } from '../lib/date';
 import { fmtNum } from '../lib/stats';
@@ -65,7 +67,7 @@ export default function ProfilePage() {
         >
           <ArrowLeft size={18} weight="bold" />
         </button>
-        <h1 className="h-title text-[38px]">Profile</h1>
+        <h1 className="h-title text-[2.375rem]">Profile</h1>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -171,23 +173,29 @@ export default function ProfilePage() {
       {measurements.length > 0 && (
         <Card className="mt-2 p-0">
           <ul className="divide-y divide-line">
-            {[...measurements].reverse().map((x) => (
-              <li key={x.id} className="num flex items-center gap-3 px-4 py-2.5">
+            {[...measurements].reverse().map((x) => {
+              const remove = async () => {
+                await deleteMeasurement(x.id);
+                toast('Weigh-in deleted', { undo: () => saveMeasurement(x) });
+              };
+              return (
+              <li key={x.id}>
+                <SwipeRow onDelete={remove} label={`Delete weigh-in from ${x.date}`}>
+                <div className="num flex items-center gap-3 px-4 py-2.5">
                 <span className="w-28 text-sm text-muted">{formatShort(x.date)}</span>
                 <span className="flex-1 font-medium">
                   {fmtNum(x.weight, 1)} {wu}
                 </span>
                 {x.bodyFatPct !== undefined && <Tag>{x.bodyFatPct}% bf</Tag>}
                 {x.waistCm !== undefined && <Tag>{x.waistCm} cm</Tag>}
-                <button
-                  onClick={() => confirm('Delete this weigh-in?') && deleteMeasurement(x.id)}
-                  className="grid h-9 w-9 place-items-center text-muted"
-                  aria-label={`Delete weigh-in from ${x.date}`}
-                >
+                <button onClick={remove} className="hit-44 grid h-9 w-9 place-items-center text-muted" aria-label={`Delete weigh-in from ${x.date}`}>
                   <Trash size={16} weight="bold" />
                 </button>
+                </div>
+                </SwipeRow>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </Card>
       )}
@@ -236,7 +244,7 @@ function TrainingSection() {
               <Choice key={l.id} active={level === l.id} onClick={() => save({ experienceLevel: l.id })}>
                 <span>
                   <span className="block">{l.label}</span>
-                  <span className="block text-[11px] leading-snug opacity-75">{l.hint}</span>
+                  <span className="block text-[0.6875rem] leading-snug opacity-75">{l.hint}</span>
                 </span>
               </Choice>
             ))}
@@ -248,7 +256,7 @@ function TrainingSection() {
               <Choice key={e.id} active={equip === e.id} onClick={() => save({ equipmentPref: e.id })}>
                 <span>
                   <span className="block">{e.label}</span>
-                  <span className="block text-[11px] leading-snug opacity-75">{e.hint}</span>
+                  <span className="block text-[0.6875rem] leading-snug opacity-75">{e.hint}</span>
                 </span>
               </Choice>
             ))}
@@ -305,7 +313,7 @@ function HydrationSection() {
         <div className="flex items-end justify-between gap-3">
           <div>
             <div className="eyebrow">Daily target</div>
-            <div className="h-display num mt-1 text-[34px] leading-none text-wat">{fmtVolume(effective, unit)}</div>
+            <div className="h-display num mt-1 text-[2.125rem] leading-none text-wat">{fmtVolume(effective, unit)}</div>
             <div className="mt-1 text-xs text-muted">{target ? 'Your own target' : suggestion ? 'Suggested from your weight' : 'Default target'}</div>
           </div>
         </div>

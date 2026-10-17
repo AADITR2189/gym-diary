@@ -1,6 +1,9 @@
-import { useEffect, type ReactNode, type ButtonHTMLAttributes, type CSSProperties } from 'react';
+import { useEffect, useRef, type ReactNode, type ButtonHTMLAttributes, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
+import { usePresence } from '../lib/presence';
+import { project, rubberband, velocityTracker } from '../lib/spring';
 import { Link } from 'react-router-dom';
-import { X } from '@phosphor-icons/react';
+import { GearSix, UserCircle, X } from '@phosphor-icons/react';
 import { useReveal } from '../lib/reveal';
 import CountUp from './CountUp';
 
@@ -18,12 +21,12 @@ export function Card({
   index?: number;
   style?: CSSProperties;
 }) {
-  const ref = useReveal<HTMLDivElement>();
+  const [ref, shown] = useReveal<HTMLDivElement>();
   return (
     <div
       ref={ref}
-      style={{ transitionDelay: `${Math.min(index, 8) * 80}ms`, ...style }}
-      className={`reveal rounded-card border border-line bg-surface p-5 ${className}`}
+      style={{ transitionDelay: `${Math.min(index, 4) * 30}ms`, ...style }}
+      className={`reveal ${shown ? 'is-in' : ''} rounded-card border border-line bg-surface p-5 ${className}`}
     >
       {children}
     </div>
@@ -64,13 +67,13 @@ export function Stat({
   return (
     <Card index={index} className="p-4">
       <div className="eyebrow leading-tight">{label}</div>
-      <div className={`h-display num mt-2 text-[34px] ${toneText[tone]}`}>{typeof value === 'number' ? <CountUp value={value} /> : value}</div>
+      <div className={`h-display num mt-2 text-[2.125rem] ${toneText[tone]}`}>{typeof value === 'number' ? <CountUp value={value} /> : value}</div>
       {sub !== undefined && <div className="mt-1 text-xs leading-snug text-muted">{sub}</div>}
     </Card>
   );
 }
 
-/** Small uppercase pill for statuses and categories. */
+/** Small pill for statuses and categories. */
 export function Tag({ tone = 'default', children }: { tone?: Tone; children: ReactNode }) {
   const t = {
     default: 'bg-raised text-muted',
@@ -80,7 +83,7 @@ export function Tag({ tone = 'default', children }: { tone?: Tone; children: Rea
     danger: 'bg-danger-soft text-danger',
     wat: 'bg-wat-soft text-wat',
   }[tone];
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.05em] ${t}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ${t}`}>{children}</span>;
 }
 
 /** Soft square icon badge. */
@@ -133,7 +136,7 @@ export function Chip({
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`h-9 shrink-0 whitespace-nowrap rounded-btn border px-3 text-sm transition-colors active:scale-[0.98] ${
+      className={`hit-44 h-9 shrink-0 whitespace-nowrap rounded-btn border px-3 text-sm transition-colors active:scale-[0.98] ${
         active ? 'border-primary bg-primary font-medium text-primary-ink' : 'border-line bg-surface text-ink hover:bg-raised'
       } ${className}`}
     >
@@ -142,7 +145,11 @@ export function Chip({
   );
 }
 
-/** Bottom sheet modal — thumb-friendly on phones, centred dialog on desktop. */
+/**
+ * Bottom sheet — thumb-friendly on phones, centred dialog on desktop. Springs up from the bottom and
+ * leaves the same way. Drag the handle or title bar down to dismiss: it follows your finger 1:1,
+ * resists when pulled up, and a flick carries through (velocity is handed to the closing spring).
+ */
 export function Sheet({
   open,
   onClose,
@@ -154,6 +161,22 @@ export function Sheet({
   title: ReactNode;
   children: ReactNode;
 }) {
+  const panel = useRef<HTMLDivElement>(null);
+  const scrim = useRef<HTMLDivElement>(null);
+  const height = () => panel.current?.offsetHeight || 600;
+  // progress 1 = fully open, 0 = off-screen below.
+  const { mounted, progress, set, animateTo, stop } = usePresence(
+    open,
+    (p, reduced) => {
+      if (panel.current) {
+        panel.current.style.transform = reduced ? 'none' : `translate3d(0, ${(1 - p) * height()}px, 0)`;
+        panel.current.style.opacity = reduced ? String(p) : '1';
+      }
+      if (scrim.current) scrim.current.style.opacity = String(Math.max(0, Math.min(1, p)));
+    },
+    { damping: 1, response: 0.35 },
+  );
+
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -165,20 +188,63 @@ export function Sheet({
       window.removeEventListener('keydown', onKey);
     };
   }, [open, onClose]);
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal>
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-t-card border border-line bg-surface pb-safe sm:rounded-card">
-        <div className="flex items-center justify-between border-b border-line px-5 py-3">
-          <h3 className="h-title text-2xl">{title}</h3>
-          <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-btn hover:bg-raised" aria-label="Close">
-            <X size={18} weight="bold" />
-          </button>
+
+  // Drag to dismiss.
+  const drag = useRef<{ startY: number; startP: number; tracker: ReturnType<typeof velocityTracker> } | null>(null);
+  const onPointerDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    stop();
+    const tracker = velocityTracker();
+    tracker.reset(e.clientY);
+    drag.current = { startY: e.clientY, startP: progress.current, tracker };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    d.tracker.add(e.clientY);
+    const h = height();
+    let y = (1 - d.startP) * h + (e.clientY - d.startY);
+    if (y < 0) y = -rubberband(-y, h);
+    set(1 - y / h);
+  };
+  const onPointerUp = () => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    const h = height();
+    const v = d.tracker.velocity(); // px/s, positive = downwards
+    const y = (1 - progress.current) * h;
+    const projected = y + project(v);
+    if (projected > h * 0.4 && v > -200) {
+      // Close: hand the finger's speed to the spring (progress units per second).
+      animateTo(0, { velocity: -v / h, damping: 1, response: 0.3 });
+      onClose();
+    } else animateTo(1, { velocity: -v / h, damping: 0.8, response: 0.3 });
+  };
+
+  if (!mounted) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal aria-label={typeof title === 'string' ? title : undefined}>
+      <div ref={scrim} className="scrim absolute inset-0" style={{ opacity: 0 }} onClick={onClose} />
+      <div
+        ref={panel}
+        className="material relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-t-[20px] border border-line/60 pb-safe will-change-transform sm:rounded-card"
+        style={{ transform: 'translate3d(0, 100%, 0)' }}
+      >
+        <div className="cursor-grab touch-none select-none" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+          <div className="mx-auto mt-2 h-1.5 w-10 rounded-full bg-muted/40" aria-hidden />
+          <div className="flex items-center justify-between px-5 pb-3 pt-1">
+            <h3 className="h-title text-2xl">{title}</h3>
+            <button onClick={onClose} className="hit-44 grid h-10 w-10 place-items-center rounded-full bg-raised/70" aria-label="Close">
+              <X size={18} weight="bold" />
+            </button>
+          </div>
         </div>
-        <div className="overflow-y-auto p-5">{children}</div>
+        <div className="edge-fade overflow-y-auto overscroll-contain p-5 pt-3">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -197,7 +263,7 @@ export function PageHeader({ title, sub, right }: { title: ReactNode; sub?: Reac
     <header className="flex items-end justify-between gap-3 pb-6 pt-8">
       <div className="min-w-0">
         {sub && <div className="eyebrow mb-1">{sub}</div>}
-        <h1 className="h-title text-[34px] [overflow-wrap:anywhere] sm:text-[42px]">{title}</h1>
+        <h1 className="h-title text-[2.125rem] [overflow-wrap:anywhere] sm:text-[2.625rem]">{title}</h1>
       </div>
       {right && <div className="flex shrink-0 gap-2">{right}</div>}
     </header>
@@ -265,6 +331,20 @@ export function Progress({ pct, tone = 'str' }: { pct: number; tone?: Tone }) {
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
       <div className={`h-full rounded-full ${fill} transition-[width] duration-700`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
     </div>
+  );
+}
+
+/** Profile and Settings, reachable from the header of every main page. */
+export function HeaderActions() {
+  return (
+    <>
+      <IconButton label="Profile" to="/profile">
+        <UserCircle size={20} weight="bold" />
+      </IconButton>
+      <IconButton label="Settings and data" to="/settings">
+        <GearSix size={20} weight="bold" />
+      </IconButton>
+    </>
   );
 }
 

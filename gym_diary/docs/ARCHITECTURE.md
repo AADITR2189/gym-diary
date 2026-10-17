@@ -104,27 +104,27 @@ The primary colours are **teal `#004741` on sand `#F0EDE4`** (light) and **yello
 | `gold` (+ soft) | `#8A5300` on `#F4E3C0` | `#FFB44D` on `#3A2C12` | Streaks, PRs, back-dating |
 | `danger` (+ soft) | `#A3261F` on `#F6DBD6` | `#FF8F85` on `#3E1F26` | Delete actions, calories series |
 
-- **Type ("Athletic"):** Barlow Condensed Bold for headings and big numbers. Page, section and chart titles are uppercase, like a scoreboard. Barlow for UI text (line-height 1.6). Geist Mono for small uppercase labels and metadata. All fonts are bundled locally, so they work offline.
+- **Type:** the phone's own font (`system-ui`: SF Pro on iPhone, Roboto on Android) for UI text, with Barlow Condensed Bold kept for headings and big numbers. Headings are in normal case with slightly negative tracking that tightens as text grows; small labels are sentence-case semibold. Sizes are in `rem`, so the browser's text-size setting scales them. Body line-height 1.5.
 - **Icons:** Phosphor, in bold weight, or fill for the active state.
-- **Shape:** cards use a 12px radius, buttons and inputs 6px, and tags are pills.
-- **Motion:** cards fade and rise in on scroll (IntersectionObserver, 600ms, staggered by 80ms), buttons scale to 0.98 when pressed, and a single slow ambient light drifts on a fixed layer. Workout animations (`lib/anim.ts`, keyframes in `index.css`):
-  - Completed sets flash green and show a tick.
-  - New sets and exercises slide in.
-  - The save bar's sets and volume count up live.
-  - A gold **New PR** badge pops in when a set beats your record.
-  - Saving shows a drawn check mark with the session's stats, plus a sparkle burst for new PRs.
-  - Home has a weekly workout-goal ring.
-  - Big numbers count up when they come into view, and charts grow in when first scrolled to.
-  - The streak flame flickers while a streak is alive.
-  - Calendar workout days pop in one after another.
-  - Everything is switched off under `prefers-reduced-motion`.
+- **Shape:** cards use a 12px radius, buttons and inputs 6px, sheets 20px, and tags are pills.
+- **Interaction (Apple *Designing Fluid Interfaces*):**
+  - Every button and link scales to 0.97 on touch-down. Small controls get a 44×44 px touch area (`.hit-44`). Hover styles only apply on devices that really hover.
+  - Sheets, dialogs and toasts move on springs (`lib/spring.ts`: damping ratio + response, critically damped by default; `lib/presence.ts` keeps them mounted while they leave). They enter and leave along the same path and can be reversed mid-flight.
+  - Sheets: drag the handle or title bar down to dismiss. They follow the finger 1:1, rubber-band when pulled up, and project a flick forward, handing its velocity to the closing spring.
+  - Swipe left/right between calendar months (`SwipePager`). Swipe a water entry or weigh-in left to delete it (`SwipeRow`). Drag the grip on an exercise to reorder a workout. All gestures wait for a 10 px dead zone and leave vertical scrolling to the browser.
+  - Destructive actions happen at once with **Undo** in a toast (`lib/dialog.ts`). In-app dialogs replace `confirm()`/`prompt()`/`alert()`, kept for the few actions that can't be undone (erase all data, restoring over your data).
+  - Sound and haptics (`lib/feedback.ts`) fire on the same frame as the visual change and only at meaningful moments: a set ticked (light tap), rest or hold over, workout saved, new record. Android uses the Vibration API; iPhone uses the native switch haptic, which iOS only allows during a tap.
+- **Motion:** cards fade and rise 6px in on scroll (260ms, short stagger). Numbers appear at their value and animate only when they change; charts grow in 350ms. Badges appear without overshoot (bounce is reserved for things you flick). Progress tabs slide in from the side you moved to. The water wave and streak flame play a few times, then stop. Light ↔ dark eases over 300ms.
+  - Under `prefers-reduced-motion` movement becomes short cross-fades; springs, chart growth and ring sweeps are off.
+  - `prefers-reduced-transparency` makes sheets and bars solid; `prefers-contrast: more` strengthens lines, muted text and bar edges.
+- **Materials:** sheets, dialogs and toasts are translucent (`.material`: blur + saturation) over a blurred dimming scrim. The bottom menu and sticky headers are translucent bars (`.bar`) with a soft scroll-edge fade instead of a hard divider.
 - **Theme:** Dark (default), Light or System. The choice is applied before first paint by an inline script, so there is no flash of the wrong theme.
 
 ---
 
 ## 4. Screens
 
-The bottom navigation reads **Home · Calendar · [+] · History · Progress**. The Home header links to **Profile** and **Settings**. The Log screen links to the **Exercise library**.
+The bottom navigation reads **Today · Calendar · Log · History · Progress**. Profile and Settings are in the header of every main page. The Log screen links to the **Exercise library**.
 
 | Screen | Route | Contents |
 |---|---|---|

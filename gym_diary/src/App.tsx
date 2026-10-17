@@ -3,6 +3,8 @@ import { useEffect } from 'react';
 import { IconContext } from '@phosphor-icons/react';
 import { DataProvider } from './hooks/useData';
 import BottomNav from './components/BottomNav';
+import DialogHost from './components/DialogHost';
+import { primeSound } from './lib/feedback';
 import Dashboard from './pages/Dashboard';
 import LogHub from './pages/LogHub';
 import Editor from './pages/Editor';
@@ -31,6 +33,12 @@ function EditorRoute() {
 
 // HashRouter keeps routing working on any static host (GitHub Pages etc.) and offline.
 export default function App() {
+  // Browsers only allow sound after a tap: unlock it on the first touch so timers can beep later.
+  useEffect(() => {
+    const unlock = () => primeSound();
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
   return (
     <IconContext.Provider value={{ weight: 'bold', size: 20 }}>
       <DataProvider>
@@ -55,6 +63,7 @@ export default function App() {
             </Routes>
           </main>
           <BottomNav />
+          <DialogHost />
         </HashRouter>
       </DataProvider>
     </IconContext.Provider>
