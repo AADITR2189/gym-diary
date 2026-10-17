@@ -59,6 +59,11 @@ export interface StrengthEntry {
   bw?: number;
   /** Sets are timed holds (seconds) instead of reps. */
   timed?: boolean;
+  /**
+   * True when `bw`/`timed` reflect a choice made in the editor (saved since those switches existed).
+   * Older entries leave it unset, so new workouts fall back to the exercise's defaults instead of "off".
+   */
+  modeSet?: boolean;
 }
 
 export interface CardioEntry {

@@ -157,15 +157,23 @@ export default function Editor() {
   /** Body-weight and timed mode for a new entry: as you logged it last time, else the exercise's default. */
   function modeFor(exercise: string, muscleGroup: MuscleGroup): Pick<StrengthEntry, 'bw' | 'timed'> {
     const last = lastEntryFor(sessions, exercise);
-    const useBw = last ? last.bw !== undefined : isBodyweightByDefault(exercise, muscleGroup);
-    const timed = last ? !!last.timed : isTimedByDefault(exercise);
+    // Follow your last choice only if it was made with the switches; workouts logged before they
+    // existed (e.g. push-ups saved without body weight) get the exercise's defaults instead.
+    const chosen = last?.modeSet ? last : null;
+    const useBw = chosen ? chosen.bw !== undefined : isBodyweightByDefault(exercise, muscleGroup);
+    const timed = chosen ? !!chosen.timed : isTimedByDefault(exercise);
     return { bw: useBw ? bwFor(exercise, muscleGroup) : undefined, timed: timed || undefined };
   }
 
   function makeEntry(exercise: string, muscleGroup: MuscleGroup): StrengthEntry {
     const mode = modeFor(exercise, muscleGroup);
     const last = lastSetsFor(sessions, exercise);
-    return { id: uid(), exercise, muscleGroup, ...mode, sets: last ?? [mode.timed ? { reps: 0, weight: 0, sec: 30 } : { reps: 10, weight: 0 }] };
+    // Reshape last time's sets if the mode differs (e.g. an old plank logged as reps becomes a 30 s hold).
+    const sets = (last ?? [{ reps: 10, weight: 0 }]).map((x) =>
+      // An old hold logged as reps (plank "60 reps") almost always meant seconds.
+      mode.timed ? { ...x, reps: 0, sec: x.sec || (x.reps >= 10 ? x.reps : 30) } : x.sec ? { ...x, sec: undefined, reps: 10 } : x,
+    );
+    return { id: uid(), exercise, muscleGroup, ...mode, sets };
   }
 
   const stats = useMemo(
@@ -341,6 +349,7 @@ export default function Editor() {
         ? []
         : normaliseSupersets(s.strength).map((e) => ({
             ...e,
+            modeSet: true,
             sets: e.sets.map((x) => {
               const out: SetEntry = { reps: e.timed ? 0 : x.reps || 0, weight: x.weight || 0 };
               if (x.type) out.type = x.type;
