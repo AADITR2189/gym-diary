@@ -94,7 +94,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => applyTheme(state.settings.theme), [state.settings.theme]);
+  // Apply the theme only once the saved settings have loaded. Before that the defaults (dark) are in
+  // state, and applying them caused a flash of the dark theme on every launch in light mode. The
+  // inline script in index.html has already set the right theme for the first paint.
+  useEffect(() => {
+    if (state.ready) return applyTheme(state.settings.theme);
+  }, [state.ready, state.settings.theme]);
 
   const value = useMemo<DataCtx>(() => {
     setCustomMeta(state.exercises.filter((e) => e.isCustom));
