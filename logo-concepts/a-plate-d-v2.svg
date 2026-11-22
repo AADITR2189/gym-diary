@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Gym Diary</title>
+  <path fill="#000" fill-rule="evenodd" d="
+    M 68 32 H 128 A 96 96 0 0 1 128 224 H 68 A 20 20 0 0 1 48 204 V 52 A 20 20 0 0 1 68 32 Z
+    M 128 98 A 30 30 0 1 0 128 158 A 30 30 0 1 0 128 98 Z"/>
+</svg>
