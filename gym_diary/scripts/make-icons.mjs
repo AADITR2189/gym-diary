@@ -14,7 +14,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
 const page = await browser.newPage();
 for (const t of targets) {
   let body = svg;
-  if (!t.round) body = body.replace('rx="112"', 'rx="0"');
+  if (!t.round) body = body.replace(/rx="[\d.]+"/, 'rx="0"'); // square tile for maskable / Apple icons
   const inner = t.size * (1 - t.pad * 2);
   await page.setViewportSize({ width: t.size, height: t.size });
   await page.setContent(
