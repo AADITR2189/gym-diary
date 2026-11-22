@@ -1,0 +1,36 @@
+{
+  "brand": "Gym Diary",
+  "tagline": "Show up. Log it. Climb.",
+  "brief": "A private, offline gym and cardio diary for one person. It should feel consistent, personal and quietly athletic: the opposite of loud fitness apps full of flames and dumbbells.",
+  "adjectives": ["consistent", "personal", "disciplined", "athletic"],
+  "criteria": "Success: no fitness clichés, recognisable as an app icon and at 16 px, works in one colour, matches the app's navy/yellow and teal/sand palette.",
+  "industry": "consumer-app",
+  "nav": ["Log", "Progress", "Calendar"],
+  "brand_color": "#0C1E29",
+  "tile_color": "#0C1E29",
+  "greyscale": false,
+  "final": true,
+  "designer": "Claude",
+  "round": 3,
+  "concepts": [
+    {
+      "name": "Steps",
+      "symbol": "../gym-diary-symbol.svg",
+      "lockup": "../gym-diary-horizontal.svg",
+      "stacked": "../gym-diary-stacked.svg",
+      "symbol_on_tile": "../symbol/gym-diary-symbol-mono-fffe15.svg",
+      "symbol_on_dark": "../symbol/gym-diary-symbol-mono-fffe15.svg",
+      "lock_dark": "../lockups/gym-diary-horizontal-mono-fffe15.svg",
+      "stack_dark": "../lockups/gym-diary-stacked-mono-fffe15.svg",
+      "stack_tile": "../lockups/gym-diary-stacked-mono-fffe15.svg",
+      "idea": "A slice of your training calendar: the days you logged climb like steps. Showing up is progress.",
+      "rationale": [
+        "Built on the app's own yearly training grid, so logo and app feel like one thing",
+        "Avoids every gym cliché (no dumbbell, flame or flexing arm)",
+        "A 3×3 grid of one radius and one gap: crisp as a phone icon and still a staircase at 16 px"
+      ]
+    }
+  ],
+  "recommendation": "Steps: the most ownable direction, rooted in the app's own training calendar.",
+  "next_steps": ["Put the new icons into the app", "Use the horizontal logo in the README and on the website"]
+}
