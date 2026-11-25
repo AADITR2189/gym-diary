@@ -66,6 +66,8 @@ export interface WorkoutExerciseRow {
   bw?: number;
   timed?: boolean;
   modeSet?: boolean;
+  perSide?: boolean;
+  bar?: number;
 }
 export interface CardioRow extends CardioEntry {
   sessionId: string;
@@ -210,6 +212,8 @@ async function writeSessionRows(tx: SessionTx, s: Session) {
       bw: e.bw,
       timed: e.timed,
       modeSet: e.modeSet,
+      perSide: e.perSide,
+      bar: e.bar,
     });
   for (const [order, c] of cardio.entries())
     await tx.objectStore('cardioSessions').put({ ...c, sessionId: s.id, date: s.date, order, category: c.category ?? cardioCategory(c.activity) });
@@ -227,7 +231,7 @@ function assemble(headers: WorkoutSessionRow[], exRows: WorkoutExerciseRow[], ca
   for (const r of [...exRows].sort((a, b) => a.order - b.order))
     exBy.set(r.sessionId, [
       ...(exBy.get(r.sessionId) ?? []),
-      { id: r.id, exercise: r.exercise, muscleGroup: r.muscleGroup, sets: r.sets, notes: r.notes, superset: r.superset, bw: r.bw, timed: r.timed, modeSet: r.modeSet },
+      { id: r.id, exercise: r.exercise, muscleGroup: r.muscleGroup, sets: r.sets, notes: r.notes, superset: r.superset, bw: r.bw, timed: r.timed, modeSet: r.modeSet, perSide: r.perSide, bar: r.bar },
     ]);
   const cBy = new Map<string, CardioEntry[]>();
   for (const r of [...cardioRows].sort((a, b) => a.order - b.order)) {

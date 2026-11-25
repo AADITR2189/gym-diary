@@ -89,6 +89,17 @@ export const bwPerRep = (bodyWeight: number, share: number) => Math.round(bodyWe
 export const PLATES = { kg: [25, 20, 15, 10, 5, 2.5, 1.25], lb: [45, 35, 25, 10, 5, 2.5] } as const;
 export const BARS = { kg: [20, 15, 10], lb: [45, 35, 25] } as const;
 
+// ---------- One side vs total ----------
+
+/** Dumbbell exercises are usually logged as the weight of one dumbbell. */
+export const isPerSideByDefault = (exercise: string) => /dumbbell/i.test(exercise);
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+/** Total on the bar/machine from the weight on one side: side × 2 + bar. */
+export const totalFromSide = (side: number, bar = 0) => r2(side * 2 + bar);
+/** Weight on one side from the total: (total − bar) ÷ 2, never below 0. */
+export const sideFromTotal = (total: number, bar = 0) => Math.max(0, r2((total - bar) / 2));
+
 /** Plates for one side of the bar, heaviest first. `rest` is what could not be loaded. */
 export function platesPerSide(target: number, bar: number, plates: readonly number[]) {
   let side = Math.max(0, (target - bar) / 2);

@@ -64,6 +64,13 @@ export interface StrengthEntry {
    * Older entries leave it unset, so new workouts fall back to the exercise's defaults instead of "off".
    */
   modeSet?: boolean;
+  /**
+   * Weights are typed for ONE side (one dumbbell, or the plates on one side of a bar). Each set's `weight`
+   * still stores the TOTAL (side × 2 + bar), so volume, records and charts need no conversion.
+   */
+  perSide?: boolean;
+  /** Barbell in one-side mode: the empty bar's weight, added to the total. */
+  bar?: number;
 }
 
 export interface CardioEntry {

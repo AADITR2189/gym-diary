@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer, DotsSixVertical } from '@phosphor-icons/react';
+import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer, DotsSixVertical, ArrowsLeftRight } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { Button, Card, Field, IconBadge, NumberInput, Tag, inputCls } from '../components/ui';
 import { ExercisePicker, CardioPicker, ExerciseAutocomplete } from '../components/ExercisePicker';
@@ -15,12 +15,13 @@ import { haptic, sound } from '../lib/feedback';
 import { spring } from '../lib/spring';
 
 import { currentWeight } from '../lib/body';
-import { bodyShare, bwPerRep, isBodyweightByDefault, isTimedByDefault, repRange, suggestNext, usesBarbell, type Suggestion } from '../lib/training';
+import { BARS, bodyShare, bwPerRep, isBodyweightByDefault, isPerSideByDefault, isTimedByDefault, repRange, sideFromTotal, suggestNext, totalFromSide, usesBarbell, type Suggestion } from '../lib/training';
 import { PlateSheet, RestTimerSlot, SetTypeSheet, primeSound, savedRestSec, setTypeTone, type RestRun } from '../components/WorkoutTools';
 import CountUp from '../components/CountUp';
 import { useFlash } from '../lib/anim';
 import type { PersonalRecord } from '../types';
 import { groupName } from '../data/exercises';
+import { exerciseMeta } from '../data/muscles';
 
 export const DRAFT_KEY = 'gym-diary-draft';
 
@@ -155,14 +156,17 @@ export default function Editor() {
   }, [s, isNew]);
 
   /** Body-weight and timed mode for a new entry: as you logged it last time, else the exercise's default. */
-  function modeFor(exercise: string, muscleGroup: MuscleGroup): Pick<StrengthEntry, 'bw' | 'timed'> {
+  function modeFor(exercise: string, muscleGroup: MuscleGroup): Pick<StrengthEntry, 'bw' | 'timed' | 'perSide' | 'bar'> {
     const last = lastEntryFor(sessions, exercise);
     // Follow your last choice only if it was made with the switches; workouts logged before they
     // existed (e.g. push-ups saved without body weight) get the exercise's defaults instead.
     const chosen = last?.modeSet ? last : null;
     const useBw = chosen ? chosen.bw !== undefined : isBodyweightByDefault(exercise, muscleGroup);
     const timed = chosen ? !!chosen.timed : isTimedByDefault(exercise);
-    return { bw: useBw ? bwFor(exercise, muscleGroup) : undefined, timed: timed || undefined };
+    // One side vs total: your last choice (and bar weight), else on for dumbbell exercises.
+    const perSide = chosen ? !!chosen.perSide : isPerSideByDefault(exercise);
+    const bar = perSide && usesBarbell(exercise) ? chosen?.bar ?? BARS[settings.weightUnit][0] : undefined;
+    return { bw: useBw ? bwFor(exercise, muscleGroup) : undefined, timed: timed || undefined, perSide: perSide || undefined, bar };
   }
 
   function makeEntry(exercise: string, muscleGroup: MuscleGroup): StrengthEntry {
@@ -791,6 +795,35 @@ function StrengthCard({
   const toggleBw = () => onChange((x) => ({ ...x, bw: x.bw === undefined ? bwNow : undefined }));
   const share = bodyWeight ? Math.round(((e.bw ?? bwNow) / bodyWeight) * 100) : 0;
 
+  // One side vs total. Sets always store the total; in one-side mode the boxes show (and take) one side.
+  const perSide = !!e.perSide;
+  const barbell = usesBarbell(e.exercise);
+  const bar = perSide && barbell ? e.bar ?? 0 : 0;
+  const shown = (total: number) => (perSide ? sideFromTotal(total, bar) : total);
+  const stored = (typed: number) => (perSide ? totalFromSide(typed, bar) : typed);
+  // Free weights get a "per side" hint in total mode too (half each side).
+  const twoSided = perSide || exerciseMeta(e.exercise, e.muscleGroup).equipment === 'free';
+  const caption = (total: number) => {
+    if (!total || !twoSided) return undefined;
+    if (!perSide) return `${fmtNum(total / 2, 2)} each side`;
+    return bar ? `= ${fmtNum(total, 2)} total · ${fmtNum(total / 2, 2)}/arm` : `= ${fmtNum(total, 2)} total`;
+  };
+  const togglePerSide = () =>
+    onChange((x) => {
+      const on = !x.perSide;
+      return { ...x, perSide: on || undefined, bar: on && barbell ? x.bar ?? BARS[unit === 'lb' ? 'lb' : 'kg'][0] : undefined };
+    });
+  // Cycle the bar: standard bars for the unit, then 0 for "no bar" (e.g. a landmine or plate-loaded handle).
+  const cycleBar = () =>
+    onChange((x) => {
+      const opts = [...BARS[unit === 'lb' ? 'lb' : 'kg'], 0];
+      const i = opts.indexOf((x.bar ?? opts[0]) as (typeof opts)[number]);
+      const next = opts[(i + 1) % opts.length];
+      // Keep the weight per side the same when the bar changes; the total follows.
+      const old = x.bar ?? 0;
+      return { ...x, bar: next, sets: x.sets.map((st) => ({ ...st, weight: st.weight ? totalFromSide(sideFromTotal(st.weight, old), next) : st.weight })) };
+    });
+
   return (
     <Card className={`p-4 ${added ? 'anim-slide-in' : ''} ${group ? 'border-l-4 border-l-car' : ''}`}>
       <div className="flex items-start gap-3">
@@ -836,7 +869,24 @@ function StrengthCard({
         <ModeToggle on={timed} onClick={toggleTimed} icon={<Timer size={14} weight="bold" />}>
           Timed (seconds)
         </ModeToggle>
+        <ModeToggle on={perSide} onClick={togglePerSide} icon={<ArrowsLeftRight size={14} weight="bold" />}>
+          One side
+        </ModeToggle>
+        {perSide && barbell && (
+          <button
+            onClick={cycleBar}
+            className="hit-44 inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-bg px-3 text-xs font-medium text-ink"
+            aria-label={`Bar weight ${bar} ${unit}. Tap to change`}
+          >
+            Bar {bar ? `${bar} ${unit}` : 'none'}
+          </button>
+        )}
       </div>
+      {perSide && (
+        <p className="mt-1.5 text-xs text-muted">
+          Type the weight on one side{barbell ? (bar ? `; the ${bar} ${unit} bar is added to the total` : '') : ' (one dumbbell)'}. Totals and records use the full weight.
+        </p>
+      )}
       {usesBw && (
         <p className="num mt-1.5 text-xs text-muted">
           Counts {share}% of your body weight: <b className="text-ink">{fmtNum(e.bw!, 1)} {unit}</b>
@@ -860,14 +910,18 @@ function StrengthCard({
       )}
       {lastSets && (
         <div className="mt-2 flex items-center gap-1.5 font-mono text-[0.6875rem] text-muted">
-          <ClockCounterClockwise size={12} weight="bold" /> Last time: {lastSets.map((x) => `${x.type === 'warmup' ? 'W ' : ''}${fmtSet(x, e)}`).join(', ')}
+          <ClockCounterClockwise size={12} weight="bold" /> Last time: {lastSets.map((x) => `${x.type === 'warmup' ? 'W ' : ''}${fmtSet({ ...x, weight: shown(x.weight) }, e)}`).join(', ')}
+          {perSide && ' (each side)'}
         </div>
       )}
       {suggestion && (
         <div className="mt-2 flex items-center gap-2 rounded-btn border border-str/25 bg-str-soft px-3 py-2">
           <TrendUp size={18} weight="bold" className="shrink-0 text-str" />
           <div className="min-w-0 flex-1">
-            <div className="num text-sm font-medium text-str">Try today: {suggestionText}</div>
+            <div className="num text-sm font-medium text-str">
+              Try today: {suggestionText}
+              {perSide && suggestion.weight > 0 && ` (${fmtNum(sideFromTotal(suggestion.weight, bar), 2)} each side)`}
+            </div>
             <div className="text-xs text-muted">{suggestion.reason}</div>
           </div>
           {!alreadyApplied && (
@@ -879,7 +933,7 @@ function StrengthCard({
       )}
       <div className="eyebrow mt-4 grid grid-cols-[2.5rem_1fr_1fr_2.75rem] items-center gap-2 text-center">
         <span>Set</span>
-        <span>{usesBw ? `+ extra ${unit}` : `Weight ${unit}`}</span>
+        <span>{usesBw ? `+ extra ${unit}` : perSide ? `${unit} each side` : `Weight ${unit}`}</span>
         <span>{timed ? 'Time m:ss' : 'Reps'}</span>
         <span>{timed ? 'Timer' : 'Done'}</span>
       </div>
@@ -891,13 +945,14 @@ function StrengthCard({
               label={labels[i]}
               type={st.type}
               done={!!st.done}
-              weight={st.weight}
+              weight={shown(st.weight)}
+              caption={caption(st.weight)}
               sec={st.sec ?? 0}
               running={run?.i === i}
               shown={run?.i === i ? (run.target ? Math.max(0, run.target - elapsed) : elapsed) : st.sec ?? 0}
               added={i >= initialSets.current}
               onType={() => setTypeFor(i)}
-              onWeight={(v) => setSet(i, { weight: v ?? 0 })}
+              onWeight={(v) => setSet(i, { weight: stored(v ?? 0) })}
               onSec={(v) => setSet(i, { sec: v })}
               onTimer={() => {
                 if (run?.i === i) return finishRun(elapsed);
@@ -913,11 +968,12 @@ function StrengthCard({
               label={labels[i]}
               type={st.type}
               done={!!st.done}
-              weight={st.weight}
+              weight={shown(st.weight)}
+              caption={caption(st.weight)}
               reps={st.reps}
               added={i >= initialSets.current}
               onType={() => setTypeFor(i)}
-              onWeight={(v) => setSet(i, { weight: v ?? 0 })}
+              onWeight={(v) => setSet(i, { weight: stored(v ?? 0) })}
               onReps={(v) => setSet(i, { reps: v ?? 0 })}
               onDone={() => onDone(i)}
             />
@@ -942,7 +998,7 @@ function StrengthCard({
         }
       >
         {last ? <CopySimple size={16} weight="bold" /> : <Plus size={16} weight="bold" />} Add set{' '}
-        {last && <span className="num text-muted">({fmtSet(last, e)})</span>}
+        {last && <span className="num text-muted">({fmtSet({ ...last, weight: shown(last.weight) }, e)})</span>}
       </Button>
       <p className="mt-2 text-center text-[0.6875rem] text-muted">
         {timed ? 'Tap ▶ to start the hold timer; it beeps at the target time. Tap ■ to stop early. ' : ''}Tap a set number to make it a warm-up, drop set or set to
@@ -1025,6 +1081,7 @@ function TimedSetRow({
   type,
   done,
   weight,
+  caption,
   sec,
   running,
   shown,
@@ -1038,6 +1095,8 @@ function TimedSetRow({
   type?: SetType;
   done: boolean;
   weight: number;
+  /** Small line under the weight box: the total, or what each side carries. */
+  caption?: string;
   sec: number;
   running: boolean;
   shown: number;
@@ -1061,7 +1120,7 @@ function TimedSetRow({
       >
         {label}
       </button>
-      <NumberInput value={weight} step={0.5} onChange={onWeight} label={`Set ${label} extra weight`} className={done ? 'border-str/40' : ''} />
+      <WeightBox value={weight} caption={caption} onChange={onWeight} label={`Set ${label} extra weight`} done={done} />
       {running ? (
         <div className="num grid h-12 place-items-center rounded-btn border border-gold bg-gold-soft text-lg font-semibold text-gold" aria-live="polite">
           {fmtSec(shown)}
@@ -1113,12 +1172,23 @@ function supersetLetters(list: StrengthEntry[]) {
   return m;
 }
 
+/** Weight input with an optional caption underneath (total, or per side). */
+function WeightBox({ value, caption, onChange, label, done }: { value: number; caption?: string; onChange: (v: number | undefined) => void; label: string; done: boolean }) {
+  return (
+    <div className="min-w-0">
+      <NumberInput value={value} step={0.5} onChange={onChange} label={label} className={done ? 'border-str/40' : ''} />
+      {caption && <div className="num mt-0.5 truncate text-center text-[0.6875rem] leading-tight text-muted">{caption}</div>}
+    </div>
+  );
+}
+
 /** One set row. The label opens the set-type menu; the tick marks it done and starts the rest timer. */
 function SetRow({
   label,
   type,
   done,
   weight,
+  caption,
   reps,
   added,
   onType,
@@ -1130,6 +1200,8 @@ function SetRow({
   type?: SetType;
   done: boolean;
   weight: number;
+  /** Small line under the weight box: the total, or what each side carries. */
+  caption?: string;
   reps: number;
   added: boolean;
   onType: () => void;
@@ -1147,7 +1219,7 @@ function SetRow({
       >
         {label}
       </button>
-      <NumberInput value={weight} step={0.5} onChange={onWeight} label={`Set ${label} weight`} className={done ? 'border-str/40' : ''} />
+      <WeightBox value={weight} caption={caption} onChange={onWeight} label={`Set ${label} weight`} done={done} />
       <NumberInput value={reps} onChange={onReps} label={`Set ${label} reps`} className={done ? 'border-str/40' : ''} />
       <button
         onClick={onDone}
