@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer, DotsSixVertical, ArrowsLeftRight } from '@phosphor-icons/react';
+import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer, DotsSixVertical } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { Button, Card, Field, IconBadge, NumberInput, Tag, inputCls } from '../components/ui';
 import { ExercisePicker, CardioPicker, ExerciseAutocomplete } from '../components/ExercisePicker';
@@ -15,13 +15,12 @@ import { haptic, sound } from '../lib/feedback';
 import { spring } from '../lib/spring';
 
 import { currentWeight } from '../lib/body';
-import { BARS, bodyShare, bwPerRep, isBodyweightByDefault, isPerSideByDefault, isTimedByDefault, repRange, sideFromTotal, suggestNext, totalFromSide, usesBarbell, type Suggestion } from '../lib/training';
+import { BARS, armFromPlates, bodyShare, bwPerRep, defaultLoad, isBodyweightByDefault, isTimedByDefault, platesFromArm, repRange, suggestNext, usesBarbell, type Suggestion } from '../lib/training';
 import { PlateSheet, RestTimerSlot, SetTypeSheet, primeSound, savedRestSec, setTypeTone, type RestRun } from '../components/WorkoutTools';
 import CountUp from '../components/CountUp';
 import { useFlash } from '../lib/anim';
 import type { PersonalRecord } from '../types';
 import { groupName } from '../data/exercises';
-import { exerciseMeta } from '../data/muscles';
 
 export const DRAFT_KEY = 'gym-diary-draft';
 
@@ -156,17 +155,17 @@ export default function Editor() {
   }, [s, isNew]);
 
   /** Body-weight and timed mode for a new entry: as you logged it last time, else the exercise's default. */
-  function modeFor(exercise: string, muscleGroup: MuscleGroup): Pick<StrengthEntry, 'bw' | 'timed' | 'perSide' | 'bar'> {
+  function modeFor(exercise: string, muscleGroup: MuscleGroup): Pick<StrengthEntry, 'bw' | 'timed' | 'load' | 'bar'> {
     const last = lastEntryFor(sessions, exercise);
     // Follow your last choice only if it was made with the switches; workouts logged before they
     // existed (e.g. push-ups saved without body weight) get the exercise's defaults instead.
     const chosen = last?.modeSet ? last : null;
     const useBw = chosen ? chosen.bw !== undefined : isBodyweightByDefault(exercise, muscleGroup);
     const timed = chosen ? !!chosen.timed : isTimedByDefault(exercise);
-    // One side vs total: your last choice (and bar weight), else on for dumbbell exercises.
-    const perSide = chosen ? !!chosen.perSide : isPerSideByDefault(exercise);
-    const bar = perSide && usesBarbell(exercise) ? chosen?.bar ?? BARS[settings.weightUnit][0] : undefined;
-    return { bw: useBw ? bwFor(exercise, muscleGroup) : undefined, timed: timed || undefined, perSide: perSide || undefined, bar };
+    // Weight type: your last choice (and bar), else "one dumbbell" for dumbbell exercises.
+    const load = chosen ? chosen.load : defaultLoad(exercise);
+    const bar = load === 'barbell' ? chosen?.bar ?? BARS[settings.weightUnit][0] : undefined;
+    return { bw: useBw ? bwFor(exercise, muscleGroup) : undefined, timed: timed || undefined, load, bar };
   }
 
   function makeEntry(exercise: string, muscleGroup: MuscleGroup): StrengthEntry {
@@ -795,34 +794,41 @@ function StrengthCard({
   const toggleBw = () => onChange((x) => ({ ...x, bw: x.bw === undefined ? bwNow : undefined }));
   const share = bodyWeight ? Math.round(((e.bw ?? bwNow) / bodyWeight) * 100) : 0;
 
-  // One side vs total. Sets always store the total; in one-side mode the boxes show (and take) one side.
-  const perSide = !!e.perSide;
-  const barbell = usesBarbell(e.exercise);
-  const bar = perSide && barbell ? e.bar ?? 0 : 0;
-  const shown = (total: number) => (perSide ? sideFromTotal(total, bar) : total);
-  const stored = (typed: number) => (perSide ? totalFromSide(typed, bar) : typed);
-  // Free weights get a "per side" hint in total mode too (half each side).
-  const twoSided = perSide || exerciseMeta(e.exercise, e.muscleGroup).equipment === 'free';
-  const caption = (total: number) => {
-    if (!total || !twoSided) return undefined;
-    if (!perSide) return `${fmtNum(total / 2, 2)} each side`;
-    return bar ? `= ${fmtNum(total, 2)} total · ${fmtNum(total / 2, 2)}/arm` : `= ${fmtNum(total, 2)} total`;
+  // Weight type. Per-arm modes store what each arm lifts in every set's weight (records and charts use it);
+  // bar + plates mode shows and takes ALL the plates, with the bar typed once for the exercise.
+  const load = e.load;
+  const bar = load === 'barbell' ? e.bar ?? 0 : 0;
+  const shown = (w: number) => (load === 'barbell' ? platesFromArm(w, bar) : w);
+  const stored = (typed: number) => (load === 'barbell' ? armFromPlates(typed, bar) : typed);
+  const caption = (w: number) => {
+    if (!w || !load) return undefined;
+    return load === 'dumbbell' ? `${fmtNum(w * 2, 2)} both arms` : `= ${fmtNum(w * 2, 2)} total · ${fmtNum(w, 2)}/arm`;
   };
-  const togglePerSide = () =>
+  const defaultBar = BARS[unit === 'lb' ? 'lb' : 'kg'][0];
+  // Switching type keeps the real weight on the bar: total ↔ per arm halves or doubles it.
+  const setLoad = (next: StrengthEntry['load']) =>
     onChange((x) => {
-      const on = !x.perSide;
-      return { ...x, perSide: on || undefined, bar: on && barbell ? x.bar ?? BARS[unit === 'lb' ? 'lb' : 'kg'][0] : undefined };
+      const arms = (m: StrengthEntry['load']) => (m ? 2 : 1);
+      const k = arms(x.load) / arms(next);
+      return {
+        ...x,
+        load: next,
+        bar: next === 'barbell' ? x.bar ?? defaultBar : undefined,
+        sets: x.sets.map((st) => ({ ...st, weight: st.weight ? Math.round(st.weight * k * 100) / 100 : st.weight })),
+      };
     });
-  // Cycle the bar: standard bars for the unit, then 0 for "no bar" (e.g. a landmine or plate-loaded handle).
-  const cycleBar = () =>
+  // Changing the bar keeps the plates you typed; each arm's load follows.
+  const setBar = (v: number | undefined) =>
     onChange((x) => {
-      const opts = [...BARS[unit === 'lb' ? 'lb' : 'kg'], 0];
-      const i = opts.indexOf((x.bar ?? opts[0]) as (typeof opts)[number]);
-      const next = opts[(i + 1) % opts.length];
-      // Keep the weight per side the same when the bar changes; the total follows.
       const old = x.bar ?? 0;
-      return { ...x, bar: next, sets: x.sets.map((st) => ({ ...st, weight: st.weight ? totalFromSide(sideFromTotal(st.weight, old), next) : st.weight })) };
+      const nb = Math.max(0, v ?? 0);
+      return { ...x, bar: nb, sets: x.sets.map((st) => ({ ...st, weight: st.weight ? armFromPlates(platesFromArm(st.weight, old), nb) : st.weight })) };
     });
+  const LOADS: { id: StrengthEntry['load']; label: string }[] = [
+    { id: undefined, label: 'Total' },
+    { id: 'dumbbell', label: 'One dumbbell' },
+    { id: 'barbell', label: 'Bar + plates' },
+  ];
 
   return (
     <Card className={`p-4 ${added ? 'anim-slide-in' : ''} ${group ? 'border-l-4 border-l-car' : ''}`}>
@@ -849,7 +855,7 @@ function StrengthCard({
           </div>
         </div>
         {onPlates && !timed && (
-          <button onClick={() => onPlates(topWeight)} className="hit-44 grid h-9 w-9 place-items-center text-muted" aria-label="Plate calculator" title="Plate calculator">
+          <button onClick={() => onPlates(load ? topWeight * 2 : topWeight)} className="hit-44 grid h-9 w-9 place-items-center text-muted" aria-label="Plate calculator" title="Plate calculator">
             <Calculator size={18} weight="bold" />
           </button>
         )}
@@ -869,22 +875,36 @@ function StrengthCard({
         <ModeToggle on={timed} onClick={toggleTimed} icon={<Timer size={14} weight="bold" />}>
           Timed (seconds)
         </ModeToggle>
-        <ModeToggle on={perSide} onClick={togglePerSide} icon={<ArrowsLeftRight size={14} weight="bold" />}>
-          One side
-        </ModeToggle>
-        {perSide && barbell && (
-          <button
-            onClick={cycleBar}
-            className="hit-44 inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-bg px-3 text-xs font-medium text-ink"
-            aria-label={`Bar weight ${bar} ${unit}. Tap to change`}
-          >
-            Bar {bar ? `${bar} ${unit}` : 'none'}
-          </button>
-        )}
       </div>
-      {perSide && (
+      {!timed && !usesBw && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Weight type">
+          <span className="mr-0.5 text-xs text-muted">Weight:</span>
+          {LOADS.map((o) => (
+            <button
+              key={o.label}
+              onClick={() => setLoad(o.id)}
+              aria-pressed={load === o.id}
+              className={`hit-44 h-8 rounded-full border px-3 text-xs font-medium ${load === o.id ? 'border-primary bg-primary text-primary-ink' : 'border-line bg-bg text-muted'}`}
+            >
+              {o.label}
+            </button>
+          ))}
+          {load === 'barbell' && (
+            <label className="ml-1 inline-flex items-center gap-1.5 text-xs text-muted">
+              Bar
+              <span className="block w-16">
+                <NumberInput value={e.bar} step={0.5} onChange={setBar} label={`Bar weight ${unit}`} className="h-8 text-sm" />
+              </span>
+              {unit}
+            </label>
+          )}
+        </div>
+      )}
+      {load && !timed && !usesBw && (
         <p className="mt-1.5 text-xs text-muted">
-          Type the weight on one side{barbell ? (bar ? `; the ${bar} ${unit} bar is added to the total` : '') : ' (one dumbbell)'}. Totals and records use the full weight.
+          {load === 'dumbbell'
+            ? 'Type one dumbbell: that is what each arm lifts. Records use the weight per arm.'
+            : `Type the bar once and all the plates for each set. Each arm lifts half: (bar + plates) ÷ 2. Records use the weight per arm.`}
         </p>
       )}
       {usesBw && (
@@ -911,7 +931,7 @@ function StrengthCard({
       {lastSets && (
         <div className="mt-2 flex items-center gap-1.5 font-mono text-[0.6875rem] text-muted">
           <ClockCounterClockwise size={12} weight="bold" /> Last time: {lastSets.map((x) => `${x.type === 'warmup' ? 'W ' : ''}${fmtSet({ ...x, weight: shown(x.weight) }, e)}`).join(', ')}
-          {perSide && ' (each side)'}
+          {load === 'dumbbell' ? ' (per dumbbell)' : load === 'barbell' ? ` (plates, ${fmtNum(bar, 2)} ${unit} bar)` : ''}
         </div>
       )}
       {suggestion && (
@@ -920,7 +940,7 @@ function StrengthCard({
           <div className="min-w-0 flex-1">
             <div className="num text-sm font-medium text-str">
               Try today: {suggestionText}
-              {perSide && suggestion.weight > 0 && ` (${fmtNum(sideFromTotal(suggestion.weight, bar), 2)} each side)`}
+              {load && suggestion.weight > 0 && (load === 'barbell' ? ` per arm (${fmtNum(platesFromArm(suggestion.weight, bar), 2)} ${unit} of plates)` : ' per arm')}
             </div>
             <div className="text-xs text-muted">{suggestion.reason}</div>
           </div>
@@ -933,7 +953,7 @@ function StrengthCard({
       )}
       <div className="eyebrow mt-4 grid grid-cols-[2.5rem_1fr_1fr_2.75rem] items-center gap-2 text-center">
         <span>Set</span>
-        <span>{usesBw ? `+ extra ${unit}` : perSide ? `${unit} each side` : `Weight ${unit}`}</span>
+        <span>{usesBw ? `+ extra ${unit}` : load === 'dumbbell' ? `${unit} per dumbbell` : load === 'barbell' ? `Plates ${unit}` : `Weight ${unit}`}</span>
         <span>{timed ? 'Time m:ss' : 'Reps'}</span>
         <span>{timed ? 'Timer' : 'Done'}</span>
       </div>

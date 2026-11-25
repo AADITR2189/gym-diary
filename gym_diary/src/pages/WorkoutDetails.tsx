@@ -9,7 +9,7 @@ import { sessionTitle } from '../components/SessionCard';
 import { groupName } from '../data/exercises';
 import { EQUIPMENT_LABEL, exerciseMeta, regionInfo, type Region } from '../data/muscles';
 import { formatLong } from '../lib/date';
-import { sideFromTotal } from '../lib/training';
+import { platesFromArm } from '../lib/training';
 import { entryVolume, fmtMinutes, fmtNum, personalRecords, sessionCardioMin, sessionDuration, sessionVolume, setLabels, workSets, fmtSec } from '../lib/stats';
 import { bodyWeightFor, exerciseIntensity, intensities, regionStats, sessionsLoads, sessionsSetLoads } from '../lib/heatmap';
 import type { StrengthEntry } from '../types';
@@ -219,7 +219,13 @@ function ExerciseRow({ e, unit, pr }: { e: StrengthEntry; unit: string; pr: bool
                     <td className="py-1">{labels[i]}</td>
                     <td className="py-1">
                       {e.bw !== undefined ? `BW${x.weight ? ` + ${x.weight} ${unit}` : ''}` : `${x.weight} ${unit}`}
-                      {e.perSide && x.weight > 0 && <span className="text-muted"> ({sideFromTotal(x.weight, e.bar ?? 0)} each side)</span>}
+                      {e.load === 'dumbbell' && x.weight > 0 && <span className="text-muted"> per dumbbell</span>}
+                      {e.load === 'barbell' && x.weight > 0 && (
+                        <span className="text-muted">
+                          {' '}
+                          per arm (bar {e.bar ?? 0} + {platesFromArm(x.weight, e.bar ?? 0)} plates)
+                        </span>
+                      )}
                     </td>
                     <td className="py-1">{e.timed ? fmtSec(x.sec || 0) : x.reps}</td>
                   </tr>

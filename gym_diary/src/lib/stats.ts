@@ -22,8 +22,10 @@ export function setLabels(sets: SetEntry[]): string[] {
 }
 
 /** Reps × weight. In body-weight mode `bw` (body weight counted per rep) is added to the weight. Timed sets have no reps, so no volume. */
-export const setVolume = (s: SetEntry, bw = 0) => (isWorkSet(s) ? (s.reps || 0) * ((s.weight || 0) + bw) : 0);
-export const entryVolume = (e: StrengthEntry) => e.sets.reduce((a, s) => a + setVolume(s, e.bw), 0);
+export const setVolume = (s: SetEntry, bw = 0, arms = 1) => (isWorkSet(s) ? (s.reps || 0) * ((s.weight || 0) * arms + bw) : 0);
+/** Per-arm entries (one dumbbell / bar + plates) store what each arm lifts; volume counts both arms. */
+export const armsOf = (e: Pick<StrengthEntry, 'load'>) => (e.load ? 2 : 1);
+export const entryVolume = (e: StrengthEntry) => e.sets.reduce((a, s) => a + setVolume(s, e.bw, armsOf(e)), 0);
 
 /** 90 → "1:30". */
 export const fmtSec = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
@@ -214,7 +216,7 @@ export function personalRecords(list: Session[]): PR[] {
           pr.best1rm = est;
           pr.best1rmDate = s.date;
         }
-        pr.bestSetVolume = Math.max(pr.bestSetVolume, setVolume(set, e.bw));
+        pr.bestSetVolume = Math.max(pr.bestSetVolume, setVolume(set, e.bw, armsOf(e)));
       }
       pr.bestSessionVolume = Math.max(pr.bestSessionVolume, entryVolume(e));
       m.set(e.exercise, pr);

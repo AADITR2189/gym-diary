@@ -66,7 +66,7 @@ export interface WorkoutExerciseRow {
   bw?: number;
   timed?: boolean;
   modeSet?: boolean;
-  perSide?: boolean;
+  load?: 'dumbbell' | 'barbell';
   bar?: number;
 }
 export interface CardioRow extends CardioEntry {
@@ -212,7 +212,7 @@ async function writeSessionRows(tx: SessionTx, s: Session) {
       bw: e.bw,
       timed: e.timed,
       modeSet: e.modeSet,
-      perSide: e.perSide,
+      load: e.load,
       bar: e.bar,
     });
   for (const [order, c] of cardio.entries())
@@ -231,7 +231,7 @@ function assemble(headers: WorkoutSessionRow[], exRows: WorkoutExerciseRow[], ca
   for (const r of [...exRows].sort((a, b) => a.order - b.order))
     exBy.set(r.sessionId, [
       ...(exBy.get(r.sessionId) ?? []),
-      { id: r.id, exercise: r.exercise, muscleGroup: r.muscleGroup, sets: r.sets, notes: r.notes, superset: r.superset, bw: r.bw, timed: r.timed, modeSet: r.modeSet, perSide: r.perSide, bar: r.bar },
+      { id: r.id, exercise: r.exercise, muscleGroup: r.muscleGroup, sets: r.sets, notes: r.notes, superset: r.superset, bw: r.bw, timed: r.timed, modeSet: r.modeSet, load: r.load, bar: r.bar },
     ]);
   const cBy = new Map<string, CardioEntry[]>();
   for (const r of [...cardioRows].sort((a, b) => a.order - b.order)) {

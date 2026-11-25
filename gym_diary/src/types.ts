@@ -65,11 +65,15 @@ export interface StrengthEntry {
    */
   modeSet?: boolean;
   /**
-   * Weights are typed for ONE side (one dumbbell, or the plates on one side of a bar). Each set's `weight`
-   * still stores the TOTAL (side × 2 + bar), so volume, records and charts need no conversion.
+   * How the weight is entered, for exercises worked by two arms:
+   * - 'dumbbell': the weight of ONE dumbbell, which is what each arm lifts.
+   * - 'barbell': the bar (`bar`) plus ALL the plates, typed per set; each arm lifts half of that total.
+   * In both, each set's `weight` stores the PER-ARM load, so records, charts and tips compare dumbbell and
+   * barbell versions of an exercise directly. Volume counts both arms (see `armsOf`).
+   * Missing = the weight typed is simply the load (total).
    */
-  perSide?: boolean;
-  /** Barbell in one-side mode: the empty bar's weight, added to the total. */
+  load?: 'dumbbell' | 'barbell';
+  /** Bar + plates mode: the empty bar's weight. */
   bar?: number;
 }
 
