@@ -22,8 +22,8 @@ export default function WaterPage() {
   const date = isValidKey(d) && d <= todayKey() ? d : todayKey();
   const h = useHydration(date);
   const [custom, setCustom] = useState<number | undefined>();
-  // Slider: 50 ml to 1000 ml in 50 ml steps (stored in ml; shown in fl oz when that's the unit).
-  const [slide, setSlide] = useState(250);
+  // Slider: starts at 0, up to 1000 ml in 50 ml steps (stored in ml; shown in fl oz when that's the unit).
+  const [slide, setSlide] = useState(0);
   const [undo, setUndo] = useState<WaterLog | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState<number | undefined>();
@@ -120,7 +120,7 @@ export default function WaterPage() {
         </div>
         <input
           type="range"
-          min={50}
+          min={0}
           max={1000}
           step={50}
           value={slide}
@@ -134,12 +134,20 @@ export default function WaterPage() {
           aria-valuetext={fmtVolume(slide, unit)}
         />
         <div className="num -mt-1 flex justify-between text-[0.6875rem] text-muted" aria-hidden>
-          <span>{fmtVolume(50, unit)}</span>
+          <span>{fmtVolume(0, unit)}</span>
           <span>{fmtVolume(500, unit)}</span>
           <span>{fmtVolume(1000, unit)}</span>
         </div>
-        <Button variant="primary" className="mt-3 w-full" onClick={() => add(slide)}>
-          <Plus size={16} weight="bold" /> Add {fmtVolume(slide, unit)}
+        <Button
+          variant="primary"
+          className="mt-3 w-full"
+          disabled={!slide}
+          onClick={async () => {
+            await add(slide);
+            setSlide(0); // back to zero, ready for the next drink
+          }}
+        >
+          <Plus size={16} weight="bold" /> {slide ? `Add ${fmtVolume(slide, unit)}` : 'Slide to choose an amount'}
         </Button>
       </Card>
       <div className="mt-2 flex gap-2">
