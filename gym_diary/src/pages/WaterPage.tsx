@@ -7,6 +7,7 @@ import { Button, Card, Field, NumberInput, SectionTitle, Tag, inputCls } from '.
 import WaterRing from '../components/WaterRing';
 import { deleteWaterLog, saveWaterLog, uid } from '../db/db';
 import { toast } from '../lib/dialog';
+import { haptic } from '../lib/feedback';
 import SwipeRow from '../components/SwipeRow';
 import { formatLong, isValidKey, todayKey } from '../lib/date';
 import { fmtVolume, fromUnit, toUnit, unitLabel } from '../lib/water';
@@ -21,6 +22,8 @@ export default function WaterPage() {
   const date = isValidKey(d) && d <= todayKey() ? d : todayKey();
   const h = useHydration(date);
   const [custom, setCustom] = useState<number | undefined>();
+  // Slider: 50 ml to 1000 ml in 50 ml steps (stored in ml; shown in fl oz when that's the unit).
+  const [slide, setSlide] = useState(250);
   const [undo, setUndo] = useState<WaterLog | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState<number | undefined>();
@@ -108,6 +111,37 @@ export default function WaterPage() {
           </button>
         ))}
       </div>
+      <Card className="mt-2 p-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="eyebrow">Choose an amount</span>
+          <span className="h-display num text-[1.75rem] leading-none text-wat" aria-hidden>
+            {fmtVolume(slide, unit)}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={50}
+          max={1000}
+          step={50}
+          value={slide}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (v !== slide) haptic('light'); // a small tick at each 50 ml step
+            setSlide(v);
+          }}
+          className="water-range mt-2 w-full"
+          aria-label="Amount of water"
+          aria-valuetext={fmtVolume(slide, unit)}
+        />
+        <div className="num -mt-1 flex justify-between text-[0.6875rem] text-muted" aria-hidden>
+          <span>{fmtVolume(50, unit)}</span>
+          <span>{fmtVolume(500, unit)}</span>
+          <span>{fmtVolume(1000, unit)}</span>
+        </div>
+        <Button variant="primary" className="mt-3 w-full" onClick={() => add(slide)}>
+          <Plus size={16} weight="bold" /> Add {fmtVolume(slide, unit)}
+        </Button>
+      </Card>
       <div className="mt-2 flex gap-2">
         <NumberInput value={custom} onChange={setCustom} placeholder={`Custom ${unitLabel(unit)}`} label="Custom amount" />
         <Button
