@@ -446,6 +446,13 @@ html.theme-fade * {
   }
 }
 
+/* Water amount slider: a tall touch target with a big thumb in the water colour. */
+.water-range {
+  height: 44px;
+  accent-color: rgb(var(--wat));
+  cursor: pointer;
+}
+
 /* Hide number spinners — we use large touch fields instead. */
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
