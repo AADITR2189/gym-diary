@@ -3,7 +3,7 @@ import { baseTargetMl, fmtVolume, targetForDate, totalsByDate } from './water';
 import { ACTIVITY_LEVELS } from '../types';
 import { groupName } from '../data/exercises';
 import { formatLong, todayKey } from './date';
-import { e1rm, fmtBest, fmtMinutes, fmtNum, fmtSet, sessionDuration, sessionVolume, SET_TYPES, setVolume, streaks, summarize, volumeByMuscle, workSets } from './stats';
+import { e1rm, fmtBest, fmtMinutes, fmtNum, fmtSet, sessionDuration, sessionVolume, SET_TYPES, setVolume, armsOf, streaks, summarize, volumeByMuscle, workSets } from './stats';
 import { goalProgress } from './goals';
 import { currentWeight } from './body';
 
@@ -60,7 +60,7 @@ export async function exportExcel(d: ExportData, from?: string, to?: string) {
           set.sec ?? null,
           set.weight,
           e.bw ?? null,
-          setVolume(set, e.bw),
+          setVolume(set, e.bw, armsOf(e)),
           set.type === 'warmup' || e.timed ? null : Math.round(e1rm(set) * 10) / 10,
           i === 0 ? e.notes ?? '' : '',
         ]),

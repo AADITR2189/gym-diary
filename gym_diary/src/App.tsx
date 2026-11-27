@@ -21,7 +21,11 @@ import WorkoutDetails from './pages/WorkoutDetails';
 
 function ScrollTop() {
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  // Braces matter: newer browsers make scrollTo() return a Promise, and React would treat a returned
+  // value as a clean-up function, crash on it and leave a blank page.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
   return null;
 }
 

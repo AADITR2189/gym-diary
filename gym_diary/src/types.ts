@@ -64,6 +64,17 @@ export interface StrengthEntry {
    * Older entries leave it unset, so new workouts fall back to the exercise's defaults instead of "off".
    */
   modeSet?: boolean;
+  /**
+   * How the weight is entered, for exercises worked by two arms:
+   * - 'dumbbell': the weight of ONE dumbbell, which is what each arm lifts.
+   * - 'barbell': the bar (`bar`) plus ALL the plates, typed per set; each arm lifts half of that total.
+   * In both, each set's `weight` stores the PER-ARM load, so records, charts and tips compare dumbbell and
+   * barbell versions of an exercise directly. Volume counts both arms (see `armsOf`).
+   * Missing = the weight typed is simply the load (total).
+   */
+  load?: 'dumbbell' | 'barbell';
+  /** Bar + plates mode: the empty bar's weight. */
+  bar?: number;
 }
 
 export interface CardioEntry {

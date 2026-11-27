@@ -1,7 +1,7 @@
 import type { MuscleGroup, Session, SetEntry } from '../types';
 import { MUSCLE_GROUPS } from '../types';
 import { isValidKey } from './date';
-import { setVolume } from './stats';
+import { armsOf, setVolume } from './stats';
 import { uid } from '../db/db';
 import { cardioCategory } from '../data/cardio';
 
@@ -51,7 +51,7 @@ export function sessionsToCsv(sessions: Session[]): string {
         const sets = e.sets.length ? e.sets : [{ reps: 0, weight: 0 }];
         sets.forEach((set, i) => {
           lines.push(
-            [...base, e.exercise, e.muscleGroup, i + 1, set.reps, set.weight, setVolume(set, e.bw), '', '', '', '', '', i === 0 ? e.notes ?? '' : '', set.type ?? '', e.superset ?? '', set.sec ?? '', e.bw ?? '']
+            [...base, e.exercise, e.muscleGroup, i + 1, set.reps, set.weight, setVolume(set, e.bw, armsOf(e)), '', '', '', '', '', i === 0 ? e.notes ?? '' : '', set.type ?? '', e.superset ?? '', set.sec ?? '', e.bw ?? '']
               .map(esc)
               .join(','),
           );
