@@ -14,3 +14,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>,
 );
+
+// Opening logo (in index.html): kept until its steps have climbed in, then faded out.
+const splash = document.getElementById('splash');
+if (splash) {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wait = Math.max(0, (reduce ? 250 : 850) - performance.now());
+  window.setTimeout(() => {
+    splash.classList.add('out');
+    window.setTimeout(() => splash.remove(), 300);
+  }, wait);
+}

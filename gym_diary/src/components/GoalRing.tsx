@@ -37,7 +37,7 @@ export default function GoalRing({
           strokeDasharray={c}
           strokeDashoffset={inView ? c * (1 - p) : c}
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: 'stroke-dashoffset 600ms cubic-bezier(0.16,1,0.3,1)' }}
+          style={{ transition: 'stroke-dashoffset 1000ms cubic-bezier(0.16,1,0.3,1) 120ms' }}
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center text-center">{children}</div>

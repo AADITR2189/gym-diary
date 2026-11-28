@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer, DotsSixVertical } from '@phosphor-icons/react';
+import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, ArrowFatLinesUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer, DotsSixVertical } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { Button, Card, Field, IconBadge, NumberInput, Switch, Tag, inputCls } from '../components/ui';
 import { ExercisePicker, CardioPicker, ExerciseAutocomplete } from '../components/ExercisePicker';
@@ -18,6 +18,7 @@ import { currentWeight } from '../lib/body';
 import { BARS, armFromPlates, bodyShare, bwPerRep, defaultLoad, isBodyweightByDefault, isTimedByDefault, platesFromArm, repRange, suggestNext, usesBarbell, type Suggestion } from '../lib/training';
 import { PlateSheet, RestTimerSlot, SetTypeSheet, primeSound, savedRestSec, setTypeTone, type RestRun } from '../components/WorkoutTools';
 import CountUp from '../components/CountUp';
+import { confetti } from '../lib/confetti';
 import { useFlash } from '../lib/anim';
 import type { PersonalRecord } from '../types';
 import { groupName } from '../data/exercises';
@@ -386,6 +387,7 @@ export default function Editor() {
       return;
     }
     goBack();
+    confetti({ originY: 0.55 });
     toast(
       c.kind === 'cardio'
         ? `Workout saved · ${fmtMinutes(c.minutes)} of cardio`
@@ -753,6 +755,9 @@ function StrengthCard({
     }));
   const alreadyApplied =
     !!suggestion && working.some((st) => st.weight === suggestion.weight && (suggestion.sec ? st.sec === suggestion.sec : st.reps === suggestion.reps));
+  // "Go heavier" suggestions get a glow and a nudging arrow, so the change is noticed.
+  const lastTop = Math.max(0, ...(lastSets ?? []).filter(isWorkSet).map((x) => x.weight || 0));
+  const heavier = !!suggestion && !suggestion.sec && suggestion.weight > 0 && lastTop > 0 && suggestion.weight > lastTop;
   const suggestionText = !suggestion
     ? ''
     : suggestion.sec
@@ -770,11 +775,26 @@ function StrengthCard({
     return () => window.clearInterval(t);
   }, [run]);
   const elapsed = run ? Math.floor((now - run.start) / 1000) : 0;
+  // After a set is ticked, the next set to do lights up for a moment.
+  const [cue, setCue] = useState<number | null>(null);
+  useEffect(() => {
+    if (cue === null) return;
+    const t = window.setTimeout(() => setCue(null), 1700);
+    return () => window.clearTimeout(t);
+  }, [cue]);
+  const tick = (i: number, patch?: Partial<SetEntry>) => {
+    const willBeDone = !e.sets[i]?.done;
+    onDone(i, patch);
+    if (!willBeDone) return;
+    const next = e.sets.findIndex((st, k) => k > i && !st.done);
+    setCue(null);
+    if (next >= 0) requestAnimationFrame(() => setCue(next));
+  };
   const finishRun = (secs: number) => {
     if (!run) return;
     const i = run.i;
     setRun(null);
-    onDone(i, { sec: Math.max(1, secs) });
+    tick(i, { sec: Math.max(1, secs) });
   };
   useEffect(() => {
     if (run && run.target > 0 && elapsed >= run.target) {
@@ -932,10 +952,15 @@ function StrengthCard({
       )}
       {suggestion && (
         <div className="mt-2 flex items-center gap-2 rounded-btn border border-str/25 bg-str-soft px-3 py-2">
-          <TrendUp size={18} weight="bold" className="shrink-0 text-str" />
+          {heavier ? (
+            <ArrowFatLinesUp size={18} weight="fill" className="anim-nudge shrink-0 text-str" aria-hidden />
+          ) : (
+            <TrendUp size={18} weight="bold" className="shrink-0 text-str" />
+          )}
           <div className="min-w-0 flex-1">
             <div className="num text-sm font-medium text-str">
-              Try today: {suggestionText}
+              Try today: <span className={heavier ? 'anim-glow' : ''}>{suggestionText}</span>
+              {heavier && <span className="sr-only"> (heavier than last time)</span>}
               {load && suggestion.weight > 0 && (load === 'barbell' ? ` per arm (${fmtNum(platesFromArm(suggestion.weight, bar), 2)} ${unit} of plates)` : ' per arm')}
             </div>
             <div className="text-xs text-muted">{suggestion.reason}</div>
@@ -954,8 +979,9 @@ function StrengthCard({
         <span>{timed ? 'Timer' : 'Done'}</span>
       </div>
       <div className="mt-1.5 space-y-2">
-        {e.sets.map((st, i) =>
-          timed ? (
+        {e.sets.map((st, i) => (
+          <div key={i} className={`rounded-btn ${cue === i ? 'anim-cue' : ''}`}>
+          {timed ? (
             <TimedSetRow
               key={i}
               label={labels[i]}
@@ -972,7 +998,7 @@ function StrengthCard({
               onSec={(v) => setSet(i, { sec: v })}
               onTimer={() => {
                 if (run?.i === i) return finishRun(elapsed);
-                if (st.done) return onDone(i); // undo
+                if (st.done) return tick(i); // undo
                 primeSound();
                 setNow(Date.now());
                 setRun({ i, start: Date.now(), target: st.sec ?? 0 });
@@ -991,10 +1017,11 @@ function StrengthCard({
               onType={() => setTypeFor(i)}
               onWeight={(v) => setSet(i, { weight: stored(v ?? 0) })}
               onReps={(v) => setSet(i, { reps: v ?? 0 })}
-              onDone={() => onDone(i)}
+              onDone={() => tick(i)}
             />
-          ),
-        )}
+          )}
+          </div>
+        ))}
       </div>
       <Button
         size="sm"
@@ -1250,6 +1277,12 @@ function SavedOverlay({ c, unit, onDone, next }: { c: Celebration; unit: string;
     doneRef.current = true;
     onDone();
   };
+  // Confetti as the check mark finishes drawing; a bigger burst for new records.
+  useEffect(() => {
+    const t = window.setTimeout(() => confetti({ big: c.prs.length > 0, originY: 0.4 }), 350);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // No timer: the screen stays until you tap, so it never moves you on before you've read it.
   const sparks = Array.from({ length: 14 }, (_, i) => {
     const a = (i / 14) * Math.PI * 2;

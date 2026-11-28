@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type ButtonHTMLAttributes, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { usePresence } from '../lib/presence';
 import { haptic } from '../lib/feedback';
@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { GearSix, UserCircle, X } from '@phosphor-icons/react';
 import { useReveal } from '../lib/reveal';
 import CountUp from './CountUp';
+import { useInView } from '../lib/anim';
 
 export type Tone = 'default' | 'str' | 'car' | 'gold' | 'danger' | 'wat';
 
@@ -252,7 +253,7 @@ export function Sheet({
 export function Empty({ icon, title, children }: { icon?: ReactNode; title: string; children?: ReactNode }) {
   return (
     <div className="flex flex-col items-center rounded-card border border-dashed border-line px-6 py-12 text-center">
-      {icon && <div className="mb-3 text-muted">{icon}</div>}
+      {icon && <div className="anim-wiggle mb-3 text-muted">{icon}</div>}
       <div className="h-title text-2xl">{title}</div>
       {children && <div className="mt-1 max-w-xs text-sm text-muted">{children}</div>}
     </div>
@@ -279,6 +280,7 @@ export function NumberInput({
   min = 0,
   className = '',
   placeholder,
+  max,
 }: {
   value: number | undefined;
   onChange: (v: number | undefined) => void;
@@ -287,19 +289,38 @@ export function NumberInput({
   min?: number;
   className?: string;
   placeholder?: string;
+  max?: number;
 }) {
+  // A value that isn't allowed (below the minimum, e.g. a negative weight) is refused with a small shake.
+  const [shake, setShake] = useState(0);
+  useEffect(() => {
+    if (!shake) return;
+    const t = window.setTimeout(() => setShake(0), 400);
+    return () => window.clearTimeout(t);
+  }, [shake]);
   return (
     <input
       type="number"
       inputMode="decimal"
       aria-label={label}
+      aria-invalid={shake ? true : undefined}
       placeholder={placeholder}
       min={min}
+      max={max}
       step={step}
       value={value === undefined || Number.isNaN(value) ? '' : value}
       onFocus={(e) => e.target.select()}
-      onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
-      className={`num h-12 w-full rounded-btn border border-line bg-bg px-3 text-center text-lg font-medium outline-none transition-colors placeholder:text-muted/60 focus:border-ink/40 ${className}`}
+      onChange={(e) => {
+        if (e.target.value === '') return onChange(undefined);
+        const n = Number(e.target.value);
+        if (!Number.isFinite(n) || n < min || (max !== undefined && n > max)) {
+          haptic('light');
+          setShake(Date.now());
+          return;
+        }
+        onChange(n);
+      }}
+      className={`num h-12 w-full rounded-btn border border-line bg-bg px-3 text-center text-lg font-medium outline-none transition-colors placeholder:text-muted/60 focus:border-ink/40 ${shake ? 'anim-shake' : ''} ${className}`}
     />
   );
 }
@@ -328,9 +349,11 @@ export function Field({ label, children, hint, group }: { label: string; childre
 /** Thin horizontal progress bar. */
 export function Progress({ pct, tone = 'str' }: { pct: number; tone?: Tone }) {
   const fill = { default: 'bg-ink', str: 'bg-str', car: 'bg-car', gold: 'bg-gold', danger: 'bg-danger', wat: 'bg-wat' }[tone];
+  // Grows from empty the first time it is seen.
+  const [ref, inView] = useInView<HTMLDivElement>();
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
-      <div className={`h-full rounded-full ${fill} transition-[width] duration-700`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+    <div ref={ref} className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
+      <div className={`motion-ring h-full rounded-full ${fill} transition-[width] duration-700`} style={{ width: `${inView ? Math.max(0, Math.min(100, pct)) : 0}%` }} />
     </div>
   );
 }

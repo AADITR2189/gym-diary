@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MuscleHeatCard } from '../components/HeatMapViews';
 import { Link } from 'react-router-dom';
-import { CheckCircle, Circle, Barbell, Plus, Target, Drop, CaretRight, Fire, ChartLineUp } from '@phosphor-icons/react';
+import { CheckCircle, Circle, Barbell, Plus, Target, Drop, CaretRight, Fire, ChartLineUp, Medal } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { Card, Empty, HeaderActions, PageHeader, Progress, SectionTitle, Stat } from '../components/ui';
 import SessionCard from '../components/SessionCard';
@@ -15,6 +15,8 @@ import CountUp from '../components/CountUp';
 import { useHydration } from '../hooks/useHydration';
 import { saveWaterLog, uid } from '../db/db';
 import { fmtVolume } from '../lib/water';
+import { confetti } from '../lib/confetti';
+import { haptic } from '../lib/feedback';
 
 function greeting() {
   const h = new Date().getHours();
@@ -46,6 +48,8 @@ export default function Dashboard() {
       weekGoal: [...active].sort((a, b) => b.createdAt - a.createdAt).find((g) => g.type === 'weeklySessions')?.target,
     };
   }, [sessions, today, settings, goals, measurements, profile, water]);
+
+  const milestone = useMilestone(d.streak.current, ready);
 
   if (!ready) return <div className="p-8 text-center text-muted">Loading…</div>;
 
@@ -110,13 +114,8 @@ export default function Dashboard() {
           index={1}
           label="Streak"
           tone="gold"
-          value={
-            <span className="inline-flex items-center gap-1">
-              {d.streak.current > 0 && <Fire size={24} weight="fill" className="anim-flicker" />}
-              <CountUp value={d.streak.current} format={(n) => `${Math.round(n)}d`} />
-            </span>
-          }
-          sub={`Longest ${d.streak.longest} days`}
+          value={<StreakValue current={d.streak.current} fresh={milestone.fresh} />}
+          sub={<StreakSub reached={milestone.reached} fresh={milestone.fresh} longest={d.streak.longest} />}
         />
         <Stat index={2} label="Days this month" value={d.month.days} sub={`${d.month.sessions} sessions`} />
         <Stat index={3} label="Avg duration" value={d.all.avgDuration ? <CountUp value={d.all.avgDuration} format={fmtMinutes} /> : '—'} sub="per workout" />
@@ -287,5 +286,65 @@ function WeekRingCard({ done, target, hasGoal }: { done: number; target: number;
         </div>
       </div>
     </Card>
+  );
+}
+
+// ---------- Streak milestones ----------
+
+const MILESTONES = [7, 14, 30, 50, 100, 150, 200, 365, 500, 730, 1000];
+const MILESTONE_KEY = 'gym-diary-streak-milestone';
+const milestoneFor = (n: number) => [...MILESTONES].reverse().find((m) => n >= m) ?? 0;
+
+/** Celebrates a new milestone once (confetti, a bigger flame, the badge drops in); remembers it so it never repeats. */
+function useMilestone(current: number, ready: boolean) {
+  const reached = milestoneFor(current);
+  const [fresh, setFresh] = useState(false);
+  useEffect(() => {
+    if (!ready) return;
+    let seen = 0;
+    try {
+      seen = Number(localStorage.getItem(MILESTONE_KEY)) || 0;
+    } catch {
+      /* storage unavailable */
+    }
+    // A broken streak starts over, so the next 7 days count again.
+    if (reached < seen || reached > seen) {
+      try {
+        localStorage.setItem(MILESTONE_KEY, String(reached));
+      } catch {
+        /* storage unavailable */
+      }
+    }
+    if (reached > seen) {
+      setFresh(true);
+      const t = window.setTimeout(() => {
+        confetti({ big: true });
+        haptic('success');
+      }, 500);
+      return () => window.clearTimeout(t);
+    }
+  }, [reached, ready]);
+  return { reached, fresh };
+}
+
+function StreakValue({ current, fresh }: { current: number; fresh: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {current > 0 && <Fire size={24} weight="fill" className={fresh ? 'anim-flame-big' : 'anim-flicker'} />}
+      <CountUp value={current} format={(n) => `${Math.round(n)}d`} />
+    </span>
+  );
+}
+
+function StreakSub({ reached: m, fresh, longest }: { reached: number; fresh: boolean; longest: number }) {
+  return (
+    <>
+      {m > 0 && (
+        <span className={`${fresh ? 'anim-drop-in' : ''} mb-1 inline-flex items-center gap-1 rounded-full bg-gold-soft px-2 py-0.5 text-[0.6875rem] font-semibold text-gold`} style={{ animationDelay: '700ms' }}>
+          <Medal size={12} weight="fill" /> {m}-day streak
+        </span>
+      )}
+      <span className="block">Longest {longest} days</span>
+    </>
   );
 }

@@ -22,8 +22,71 @@
         document.querySelector('meta[name="theme-color"]').content = t === 'light' ? '#F0EDE4' : '#0C1E29';
       } catch (e) {}
     </script>
+    <style>
+      /* Opening logo: the empty days appear, then the three steps climb in. Removed by main.tsx. */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: grid;
+        place-items: center;
+        background: #0c1e29;
+        color: #fffe15;
+        transition: opacity 260ms ease-out;
+      }
+      [data-theme='light'] #splash {
+        background: #f0ede4;
+        color: #004741;
+      }
+      #splash.out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash svg {
+        width: 96px;
+        height: 96px;
+      }
+      #splash .d {
+        animation: sp-fade 260ms ease-out both;
+      }
+      #splash .s {
+        transform-box: fill-box;
+        transform-origin: 50% 100%;
+        animation: sp-step 380ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+      }
+      @keyframes sp-fade {
+        from {
+          opacity: 0;
+        }
+      }
+      @keyframes sp-step {
+        from {
+          opacity: 0;
+          transform: translateY(22px) scale(0.6);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash .d,
+        #splash .s {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <svg viewBox="0 0 256 256" fill="currentColor">
+        <circle class="d" cx="48" cy="48" r="16" style="animation-delay:0ms" />
+        <circle class="d" cx="128" cy="48" r="16" style="animation-delay:40ms" />
+        <circle class="d" cx="48" cy="128" r="16" style="animation-delay:80ms" />
+        <rect class="s" x="16" y="176" width="64" height="64" rx="14" style="animation-delay:120ms" />
+        <rect class="s" x="96" y="176" width="64" height="64" rx="14" style="animation-delay:190ms" />
+        <rect class="s" x="96" y="96" width="64" height="64" rx="14" style="animation-delay:260ms" />
+        <rect class="s" x="176" y="176" width="64" height="64" rx="14" style="animation-delay:330ms" />
+        <rect class="s" x="176" y="96" width="64" height="64" rx="14" style="animation-delay:400ms" />
+        <rect class="s" x="176" y="16" width="64" height="64" rx="14" style="animation-delay:470ms" />
+      </svg>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
