@@ -4,13 +4,13 @@ export const prefersReducedMotion = () =>
   typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /**
- * Shows `value` straight away, then animates from the old number to the new one when it changes
- * (e.g. a new workout raises a total). Never counts up from 0 on arrival: the data is readable at once.
- * Ease-out cubic; jumps immediately when the user prefers reduced motion.
+ * Animates from the old number to the new one when `value` changes (e.g. a new workout raises a total).
+ * `initial` is where it starts: pass 0 to count up on arrival. Ease-out cubic; jumps immediately when the
+ * user prefers reduced motion.
  */
-export function useCountUp(value: number, duration = 450) {
-  const [shown, setShown] = useState(value);
-  const from = useRef(value);
+export function useCountUp(value: number, duration = 450, initial = value) {
+  const [shown, setShown] = useState(prefersReducedMotion() ? value : initial);
+  const from = useRef(prefersReducedMotion() ? value : initial);
   useEffect(() => {
     if (from.current === value) return;
     if (prefersReducedMotion() || !isFinite(value)) {

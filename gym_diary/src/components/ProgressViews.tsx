@@ -5,6 +5,7 @@ import { Card, Chip, SectionTitle } from './ui';
 import { REGIONS } from '../data/muscles';
 import { fromKey } from '../lib/date';
 import { prefsFrom } from '../lib/templates';
+import { useInView } from '../lib/anim';
 import { WEEKLY_SET_MAX, WEEKLY_SET_TARGET, regionSets, weekRange, yearGrid } from '../lib/training';
 
 const STR_LEVEL = ['', 'bg-str/25', 'bg-str/50', 'bg-str/75', 'bg-str'];
@@ -16,6 +17,8 @@ export function YearGrid() {
   const nav = useNavigate();
   const weeks = useMemo(() => yearGrid(sessions, settings.weekStartsOn), [sessions, settings.weekStartsOn]);
   const scroller = useRef<HTMLDivElement>(null);
+  // Squares light up a week at a time, starting from this week (the part you see first).
+  const [gridRef, inView] = useInView<HTMLDivElement>();
   useEffect(() => {
     // Start scrolled to the current week on narrow screens.
     if (scroller.current) scroller.current.scrollLeft = scroller.current.scrollWidth;
@@ -36,7 +39,7 @@ export function YearGrid() {
         </div>
       </div>
       <div ref={scroller} className="-mx-1 mt-3 overflow-x-auto px-1 pb-1">
-        <div className="inline-grid grid-flow-col gap-[3px]" style={{ gridTemplateRows: 'auto repeat(7, 12px)' }}>
+        <div ref={gridRef} className={`inline-grid grid-flow-col gap-[3px] ${inView ? 'cells-in' : 'cells-wait'}`} style={{ gridTemplateRows: 'auto repeat(7, 12px)' }}>
           <div />
           {dayNames.map((n, i) => (
             <div key={i} className="pr-1 font-mono text-[0.6875rem] leading-[12px] text-muted">
@@ -63,7 +66,8 @@ export function YearGrid() {
                     title={label}
                     aria-label={label}
                     onClick={() => nav(`/calendar?d=${d.date}`)}
-                    className={`h-3 w-3 rounded-[3px] ${tone} ${d.strength && d.cardio ? 'ring-1 ring-car ring-offset-0' : ''}`}
+                    style={{ ['--d' as string]: `${(weeks.length - 1 - w) * 16}ms` }}
+                    className={`cell h-3 w-3 rounded-[3px] ${tone} ${d.strength && d.cardio ? 'ring-1 ring-car ring-offset-0' : ''}`}
                   />
                 );
               }),

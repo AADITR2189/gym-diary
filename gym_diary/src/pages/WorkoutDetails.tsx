@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CaretDown, Heartbeat, PencilSimple, Trophy, NotePencil } from '@phosphor-icons/react';
+import { ArrowLeft, CaretDown, Heartbeat, PencilSimple, Trophy, NotePencil, MagnifyingGlass } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { Card, Empty, IconButton, PageHeader, SectionTitle, Stat, Tag } from '../components/ui';
 import BodyMap from '../components/BodyMap';
@@ -52,7 +52,7 @@ export default function WorkoutDetails() {
   if (!s)
     return (
       <div className="pt-10">
-        <Empty title="Workout not found">It may have been deleted.</Empty>
+        <Empty icon={<MagnifyingGlass size={30} weight="bold" />} title="Workout not found">It may have been deleted.</Empty>
         <div className="mt-4 text-center">
           <Link to="/history" className="font-medium text-str">
             Go to history

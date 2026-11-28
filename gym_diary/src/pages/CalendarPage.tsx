@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import SwipePager, { type SwipePagerHandle } from '../components/SwipePager';
-import { CaretLeft, CaretRight, Plus, Barbell, Heartbeat, Drop } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, Plus, Barbell, Heartbeat, Drop, Moon } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
 import { baseTargetMl, fmtVolume, targetForDate, totalsByDate } from '../lib/water';
 import { Card, Empty, PageHeader, Stat, HeaderActions } from '../components/ui';
@@ -151,7 +151,7 @@ export default function CalendarPage() {
           ))}
         </div>
       ) : (
-        <Empty title={selected > today ? 'This day is in the future' : 'Nothing logged'}>
+        <Empty icon={<Moon size={30} weight="bold" />} title={selected > today ? 'This day is in the future' : 'Nothing logged'}>
           {selected <= today && 'Missed logging this day? Add it now.'}
         </Empty>
       )}

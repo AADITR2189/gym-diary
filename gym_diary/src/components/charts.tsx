@@ -60,8 +60,8 @@ export function ChartCard({
   );
 }
 
-/** Shared grow-in for bars and lines: quick, so the numbers are readable almost at once; off under reduced motion. */
-const GROW = { isAnimationActive: !prefersReducedMotion(), animationDuration: 350, animationEasing: 'ease-out' as const };
+/** Shared grow-in: bars grow up from the bottom, lines draw from left to right when the chart comes into view. Off under reduced motion. */
+const GROW = { isAnimationActive: !prefersReducedMotion(), animationBegin: 80, animationDuration: 900, animationEasing: 'ease-out' as const };
 
 export function TrendBars({
   data,

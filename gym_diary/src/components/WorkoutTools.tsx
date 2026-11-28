@@ -94,11 +94,10 @@ export function RestTimerBar({ run, onChange, onStop }: { run: RestRun; onChange
     saveRestSec(total);
     onChange({ ...run, total, endAt: run.endAt + (total - run.total) * 1000 });
   };
-  const pct = over ? 100 : Math.min(100, ((run.total - left) / run.total) * 100);
   return (
     <div className={`anim-slide-in mb-3 overflow-hidden rounded-btn border ${over ? 'border-str/40 bg-str-soft' : 'border-line bg-surface'}`} role="timer" aria-live="polite">
       <div className="flex items-center gap-2 px-3 py-2">
-        <Timer size={20} weight="bold" className={over ? 'text-str' : 'text-gold'} />
+        <RestRing left={over ? 0 : Math.max(0, (run.endAt - now) / 1000)} total={run.total} over={over} />
         <div className="min-w-0 flex-1">
           <div className={`h-display num text-2xl leading-none ${over ? 'text-str' : ''}`}>{over ? 'Rest over. Go!' : mmss(left)}</div>
           {run.next && <div className="truncate text-xs text-muted">{run.next}</div>}
@@ -117,10 +116,37 @@ export function RestTimerBar({ run, onChange, onStop }: { run: RestRun; onChange
           <X size={18} weight="bold" />
         </button>
       </div>
-      <div className="h-1 bg-raised">
-        <div className={`h-full ${over ? 'bg-str' : 'bg-gold'} transition-[width] duration-300`} style={{ width: `${pct}%` }} />
-      </div>
     </div>
+  );
+}
+
+/** Ring that empties as the rest runs down; when time is up it turns green, fills and pulses. */
+function RestRing({ left, total, over }: { left: number; total: number; over: boolean }) {
+  const size = 40;
+  const stroke = 4;
+  const r = size / 2 - stroke / 2;
+  const c = 2 * Math.PI * r;
+  const frac = over ? 1 : Math.max(0, Math.min(1, left / total));
+  return (
+    <span key={over ? 'over' : 'run'} className={`relative grid shrink-0 place-items-center ${over ? 'anim-pulse' : ''}`} style={{ width: size, height: size }} aria-hidden>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="absolute inset-0">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" className="stroke-raised" strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          className={`motion-ring ${over ? 'stroke-str' : 'stroke-gold'}`}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - frac)}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          style={{ transition: over ? 'stroke-dashoffset 400ms cubic-bezier(0.16,1,0.3,1)' : 'stroke-dashoffset 250ms linear' }}
+        />
+      </svg>
+      {over ? <Check size={18} weight="bold" className="text-str" /> : <Timer size={18} weight="bold" className="text-gold" />}
+    </span>
   );
 }
 

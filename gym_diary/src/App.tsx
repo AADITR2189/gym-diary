@@ -1,5 +1,5 @@
 import { HashRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { IconContext } from '@phosphor-icons/react';
 import { DataProvider } from './hooks/useData';
 import BottomNav from './components/BottomNav';
@@ -29,6 +29,27 @@ function ScrollTop() {
   return null;
 }
 
+// The bottom tabs, left to right: moving between them slides the page the same way.
+const TABS = ['/', '/calendar', '/log', '/history', '/progress'];
+
+/** Each new page slides in sideways (between tabs) or rises in (everything else). */
+function PageTransition({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  const prev = useRef(pathname);
+  const dir = useRef(0);
+  if (prev.current !== pathname) {
+    const a = TABS.indexOf(prev.current);
+    const b = TABS.indexOf(pathname);
+    dir.current = a >= 0 && b >= 0 ? Math.sign(b - a) : 0;
+    prev.current = pathname;
+  }
+  return (
+    <div key={pathname} className="anim-page" style={{ ['--dir' as string]: dir.current }}>
+      {children}
+    </div>
+  );
+}
+
 /** Start a fresh editor whenever its link changes (e.g. "Continue to cardio" after saving a workout). */
 function EditorRoute() {
   const { search } = useLocation();
@@ -48,7 +69,8 @@ export default function App() {
       <DataProvider>
         <HashRouter>
           <ScrollTop />
-          <main className="mx-auto min-h-screen max-w-lg px-4 pb-28 pt-safe md:max-w-3xl lg:max-w-5xl">
+          <main className="mx-auto min-h-screen overflow-x-clip max-w-lg px-4 pb-28 pt-safe md:max-w-3xl lg:max-w-5xl">
+            <PageTransition>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/log" element={<LogHub />} />
@@ -65,6 +87,7 @@ export default function App() {
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Dashboard />} />
             </Routes>
+            </PageTransition>
           </main>
           <BottomNav />
           <DialogHost />

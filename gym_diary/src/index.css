@@ -410,6 +410,194 @@ html.theme-fade * {
   }
 }
 
+/* ---------- Celebrations and feedback ---------- */
+
+/* A water drop falls into the glass each time you add water. */
+.anim-drop {
+  animation: drop 700ms cubic-bezier(0.55, 0, 1, 0.45) both;
+}
+@keyframes drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-46px) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(6px) scale(1.4, 0.4);
+  }
+}
+
+/* Goal reached: the ring swells once and settles. */
+.anim-splash {
+  animation: splash 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes splash {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.07);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Badge drops in from above and lands. */
+.anim-drop-in {
+  animation: drop-in 560ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.9);
+  }
+}
+
+/* Milestone flame: grows, then flickers. */
+.anim-flame-big {
+  transform-origin: 50% 90%;
+  animation: flame-big 1.4s cubic-bezier(0.16, 1, 0.3, 1) both, flicker 1.6s ease-in-out 1.4s 2;
+}
+@keyframes flame-big {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.6);
+  }
+  100% {
+    transform: scale(1.15);
+  }
+}
+
+/* Gentle pulse when the rest is over (three beats, then still). */
+.anim-pulse {
+  animation: pulse 900ms ease-in-out 3;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+/* The next set to do: a soft yellow outline that fades. */
+.anim-cue {
+  animation: cue 1600ms ease-out;
+}
+@keyframes cue {
+  0%,
+  40% {
+    box-shadow: 0 0 0 2px rgb(var(--gold) / 0.7);
+    background-color: rgb(var(--gold-soft));
+  }
+  100% {
+    box-shadow: 0 0 0 2px rgb(var(--gold) / 0);
+    background-color: transparent;
+  }
+}
+
+/* "Go heavier" hint: the number glows, the arrow nudges up. */
+.anim-glow {
+  animation: glow 1.4s ease-in-out 2;
+  border-radius: 4px;
+}
+@keyframes glow {
+  0%,
+  100% {
+    text-shadow: none;
+  }
+  50% {
+    text-shadow: 0 0 10px rgb(var(--str) / 0.8);
+  }
+}
+.anim-nudge {
+  animation: nudge 1.4s ease-in-out 2;
+}
+@keyframes nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* Wrong entry: a short side-to-side shake. */
+.anim-shake {
+  animation: shake 380ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  border-color: rgb(var(--danger)) !important;
+}
+@keyframes shake {
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
+/* Empty pages: the picture bobs and tilts a couple of times. */
+.anim-wiggle {
+  animation: wiggle 2.2s ease-in-out 600ms 2;
+}
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-6px) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(0) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-3px) rotate(5deg);
+  }
+}
+
+/* Year grid: squares light up a week at a time (delay set per column). */
+.cells-wait .cell {
+  opacity: 0;
+}
+.cells-in .cell {
+  animation: cell-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes cell-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+/* Page change: slides a little in the direction you moved (--dir), new pages rise in. */
+/* No fill mode: once done the transform is gone, so fixed bars and overlays inside the page stay put. */
+.anim-page {
+  animation: page-in 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(var(--dir, 0) * 28px), calc((1 - var(--dir, 0) * var(--dir, 0)) * 12px), 0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wave,
   .anim-slide-in,
@@ -417,8 +605,32 @@ html.theme-fade * {
   .anim-pop,
   .anim-flicker,
   .anim-fade,
-  .sparkle {
+  .sparkle,
+  .anim-drop,
+  .anim-splash,
+  .anim-drop-in,
+  .anim-flame-big,
+  .anim-pulse,
+  .anim-glow,
+  .anim-nudge,
+  .anim-shake,
+  .anim-wiggle,
+  .cells-in .cell {
     animation: none;
+  }
+  .cells-wait .cell {
+    opacity: 1;
+  }
+  .anim-drop {
+    display: none;
+  }
+  /* Kept as plain fades: they carry meaning (which set is next, where you went). */
+  .anim-cue {
+    animation-duration: 1600ms;
+  }
+  .anim-page {
+    animation-name: fade;
+    animation-duration: 180ms;
   }
   /* Reduced motion keeps a soft cross-fade instead of movement. */
   .anim-tab,
