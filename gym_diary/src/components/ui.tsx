@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { usePresence } from '../lib/presence';
+import { haptic } from '../lib/feedback';
 import { project, rubberband, velocityTracker } from '../lib/spring';
 import { Link } from 'react-router-dom';
 import { GearSix, UserCircle, X } from '@phosphor-icons/react';
@@ -355,6 +356,48 @@ export function Progress({ pct, tone = 'str' }: { pct: number; tone?: Tone }) {
     <div ref={ref} className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
       <div className={`motion-ring h-full rounded-full ${fill} transition-[width] duration-700`} style={{ width: `${inView ? Math.max(0, Math.min(100, pct)) : 0}%` }} />
     </div>
+  );
+}
+
+/**
+ * iPhone-style on/off switch. The whole row (label included) is the tap target, at least 44 px tall.
+ * Announced to screen readers as a switch with its on/off state.
+ */
+export function Switch({
+  checked,
+  onChange,
+  label,
+  hint,
+  icon,
+  className = '',
+}: {
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  label: ReactNode;
+  hint?: ReactNode;
+  icon?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => {
+        haptic('light');
+        onChange(!checked);
+      }}
+      className={`flex min-h-[44px] w-full items-center gap-3 py-1.5 text-left active:scale-100 ${className}`}
+    >
+      {icon && <span className="shrink-0 text-muted">{icon}</span>}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium leading-snug">{label}</span>
+        {hint && <span className="block text-xs leading-snug text-muted">{hint}</span>}
+      </span>
+      <span aria-hidden className={`switch-track ${checked ? 'is-on' : ''}`}>
+        <span className="switch-thumb" />
+      </span>
+    </button>
   );
 }
 

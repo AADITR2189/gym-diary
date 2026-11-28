@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash, CopySimple, NotePencil, Barbell, Heartbeat, BookmarkSimple, ClockCounterClockwise, Check, Trophy, TrendUp, ArrowFatLinesUp, Calculator, LinkSimple, LinkBreak, Play, Stop, PersonSimple, Timer, DotsSixVertical } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
-import { Button, Card, Field, IconBadge, NumberInput, Tag, inputCls } from '../components/ui';
+import { Button, Card, Field, IconBadge, NumberInput, Switch, Tag, inputCls } from '../components/ui';
 import { ExercisePicker, CardioPicker, ExerciseAutocomplete } from '../components/ExercisePicker';
 import type { CardioEntry, Level, MuscleGroup, Session, SessionKind, SetEntry, SetType, StrengthEntry, Template } from '../types';
 import { LEVEL_RULES, prefsFrom, resolveTemplate } from '../lib/templates';
@@ -888,13 +888,9 @@ function StrengthCard({
       </div>
 
       {/* Mode switches */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <ModeToggle on={usesBw} onClick={toggleBw} icon={<PersonSimple size={14} weight="bold" />}>
-          Include body weight
-        </ModeToggle>
-        <ModeToggle on={timed} onClick={toggleTimed} icon={<Timer size={14} weight="bold" />}>
-          Timed (seconds)
-        </ModeToggle>
+      <div className="mt-3 divide-y divide-line/60 rounded-btn border border-line/60 px-3">
+        <Switch checked={usesBw} onChange={() => toggleBw()} label="Include body weight" icon={<PersonSimple size={18} weight="bold" />} />
+        <Switch checked={timed} onChange={() => toggleTimed()} label="Timed (seconds)" icon={<Timer size={18} weight="bold" />} />
       </div>
       {!timed && !usesBw && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Weight type">
@@ -1075,21 +1071,6 @@ function StrengthCard({
         }}
       />
     </Card>
-  );
-}
-
-function ModeToggle({ on, onClick, icon, children }: { on: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={on}
-      className={`hit-44 inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors ${
-        on ? 'border-str/40 bg-str-soft text-str' : 'border-line bg-bg text-muted'
-      }`}
-    >
-      {on ? <Check size={14} weight="bold" /> : icon}
-      {children}
-    </button>
   );
 }
 
