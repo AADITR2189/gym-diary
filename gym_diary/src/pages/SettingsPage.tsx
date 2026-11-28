@@ -17,7 +17,7 @@ import {
   CircleHalf,
 } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
-import { Button, Card, Chip, Field, SectionTitle, inputCls } from '../components/ui';
+import { Button, Card, Chip, Field, SectionTitle, inputCls, Switch } from '../components/ui';
 import {
   deleteCustomCardio,
   deleteCustomExercise,
@@ -193,14 +193,12 @@ export default function SettingsPage() {
             fl oz
           </Chip>
         </Row>
-        <Row label="Week starts">
-          <Chip active={settings.weekStartsOn === 1} onClick={() => saveSettings({ ...settings, weekStartsOn: 1 })}>
-            Mon
-          </Chip>
-          <Chip active={settings.weekStartsOn === 0} onClick={() => saveSettings({ ...settings, weekStartsOn: 0 })}>
-            Sun
-          </Chip>
-        </Row>
+        <Switch
+          checked={settings.weekStartsOn === 1}
+          onChange={(on) => saveSettings({ ...settings, weekStartsOn: on ? 1 : 0 })}
+          label="Start week on Monday"
+          hint={settings.weekStartsOn === 1 ? 'Weeks run Monday to Sunday' : 'Off: weeks run Sunday to Saturday'}
+        />
         <p className="text-xs text-muted">
           Weight and distance units are labels only: numbers are stored exactly as you type them. Water is stored in ml and converted for display, so
           switching ml / fl oz is safe at any time.

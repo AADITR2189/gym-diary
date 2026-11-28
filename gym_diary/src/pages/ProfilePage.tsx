@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash, Plus, CheckCircle } from '@phosphor-icons/react';
 import { useData } from '../hooks/useData';
-import { Button, Card, Field, NumberInput, SectionTitle, Stat, Tag, inputCls } from '../components/ui';
+import { Button, Card, Field, NumberInput, SectionTitle, Stat, Tag, inputCls, Switch } from '../components/ui';
 import { ChartCard, TrendLine } from '../components/charts';
 import { ACTIVITY_LEVELS, FITNESS_GOALS, GENDERS, type ActivityLevel, type FitnessGoalFocus, type Gender, type Profile } from '../types';
 import { deleteMeasurement, saveMeasurement, saveProfile, uid } from '../db/db';
@@ -334,15 +334,12 @@ function HydrationSection() {
             )}
           </div>
         </Field>
-        <label className="flex cursor-pointer items-start gap-3">
-          <input type="checkbox" checked={bonus} onChange={(e) => setBonus(e.target.checked)} className="mt-1 h-5 w-5 accent-[rgb(var(--wat))]" />
-          <span>
-            <span className="font-medium">Extra water on workout days</span>
-            <span className="block text-xs text-muted">
-              Adds {fmtVolume(BONUS_ML_PER_HOUR, unit)} per hour of logged exercise to that day&apos;s target.
-            </span>
-          </span>
-        </label>
+        <Switch
+          checked={bonus}
+          onChange={setBonus}
+          label="Extra water on workout days"
+          hint={<>Adds {fmtVolume(BONUS_ML_PER_HOUR, unit)} per hour of logged exercise to that day&apos;s target.</>}
+        />
         <Field label={`Quick-add buttons (${unitLabel(unit)})`} group>
           <div className="grid grid-cols-3 gap-2">
             {['Glass', 'Bottle', 'Large'].map((name, i) => (
