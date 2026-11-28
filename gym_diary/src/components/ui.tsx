@@ -8,7 +8,6 @@ import { GearSix, UserCircle, X } from '@phosphor-icons/react';
 import { useReveal } from '../lib/reveal';
 import CountUp from './CountUp';
 import { useInView } from '../lib/anim';
-import { haptic } from '../lib/feedback';
 
 export type Tone = 'default' | 'str' | 'car' | 'gold' | 'danger' | 'wat';
 
